@@ -11,7 +11,7 @@ type FilterPolicy interface {
 }
 
 type bloomFilterPolicy struct {
-	bitsPerKey uint
+	bitsPerKey int
 	k          uint
 }
 
@@ -21,7 +21,7 @@ func (b *bloomFilterPolicy) Name() string {
 
 func (b *bloomFilterPolicy) CreateFilter(keys [][]byte, dst *[]byte) {
 	n := len(keys)
-	bits := uint(n) * b.bitsPerKey
+	bits := n * b.bitsPerKey
 	if bits < 64 {
 		bits = 64
 	}
@@ -70,7 +70,7 @@ func bloomHash(key []byte) uint32 {
 	return util.Hash(key, 0xbc9f1d34)
 }
 
-func NewBloomFilterPolicy(bitsPerKey uint) FilterPolicy {
+func NewBloomFilterPolicy(bitsPerKey int) FilterPolicy {
 	k := uint(float64(bitsPerKey) * 0.69)
 	if k < 1 {
 		k = 1

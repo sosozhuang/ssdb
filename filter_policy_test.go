@@ -22,7 +22,7 @@ func nextLength(length int) int {
 	return length
 }
 
-func key(i int, buffer *[4]byte) string {
+func bloomKey(i int, buffer *[4]byte) string {
 	util.EncodeFixed32(buffer, uint32(i))
 	return string(buffer[:])
 }
@@ -85,7 +85,7 @@ func (bt *bloomTest) falsePositiveRate() float64 {
 	var buffer [4]byte
 	result := 0
 	for i := 0; i < 10000; i++ {
-		if bt.matches([]byte(key(i+1000000000, &buffer))) {
+		if bt.matches([]byte(bloomKey(i+1000000000, &buffer))) {
 			result++
 		}
 	}
@@ -98,18 +98,18 @@ func newBloomTest() *bloomTest {
 
 func TestEmptyFilter(t *testing.T) {
 	bt := newBloomTest()
-	util.TestFalse(bt.matches([]byte("hello")), "empty filter", t)
-	util.TestFalse(bt.matches([]byte("world")), "empty filter", t)
+	util.AssertFalse(bt.matches([]byte("hello")), "empty filter", t)
+	util.AssertFalse(bt.matches([]byte("world")), "empty filter", t)
 }
 
 func TestSmall(t *testing.T) {
 	bt := newBloomTest()
 	bt.add("hello")
 	bt.add("world")
-	util.TestTrue(bt.matches([]byte("hello")), "small filter", t)
-	util.TestTrue(bt.matches([]byte("world")), "small filter", t)
-	util.TestFalse(bt.matches([]byte("x")), "small filter", t)
-	util.TestFalse(bt.matches([]byte("foo")), "small filter", t)
+	util.AssertTrue(bt.matches([]byte("hello")), "small filter", t)
+	util.AssertTrue(bt.matches([]byte("world")), "small filter", t)
+	util.AssertFalse(bt.matches([]byte("x")), "small filter", t)
+	util.AssertFalse(bt.matches([]byte("foo")), "small filter", t)
 }
 
 func TestVaryingLengths(t *testing.T) {
@@ -119,14 +119,14 @@ func TestVaryingLengths(t *testing.T) {
 	for length := 1; length <= 10000; length = nextLength(length) {
 		bt.reset()
 		for i := 0; i < length; i++ {
-			bt.add(key(i, &buffer))
+			bt.add(bloomKey(i, &buffer))
 		}
 		bt.build()
 		if bt.filterSize() > ((length * 10 / 8) + 40) {
 			t.Error("filter size")
 		}
 		for i := 0; i < length; i++ {
-			util.TestTrue(bt.matches([]byte(key(i, &buffer))), "varying key", t)
+			util.AssertTrue(bt.matches([]byte(bloomKey(i, &buffer))), "varying key", t)
 		}
 
 		rate := bt.falsePositiveRate()
