@@ -1,22 +1,23 @@
 package ssdb
 
 import (
-	"runtime"
+	"bytes"
 	"ssdb/util"
 	"sync"
 )
 
-type Deleter func(string, interface{})
+type Deleter func([]byte, interface{})
 type Handle interface{}
 type Cache interface {
-	Insert(key string, value interface{}, charge int, deleter Deleter) Handle
-	Lookup(key string) Handle
+	Insert(key []byte, value interface{}, charge int, deleter Deleter) Handle
+	Lookup(key []byte) Handle
 	Release(handle Handle)
 	Value(handle Handle) interface{}
-	Erase(key string)
-	NewID() uint64
+	Erase(key []byte)
+	NewId() uint64
 	Prune()
 	TotalCharge() int
+	Finalizer
 }
 
 type lruHandle struct {
@@ -29,7 +30,7 @@ type lruHandle struct {
 	inCache  bool
 	refs     uint32
 	hash     uint32
-	key      string
+	key      []byte
 }
 
 type handleTable struct {
@@ -38,7 +39,7 @@ type handleTable struct {
 	list   []*lruHandle
 }
 
-func (t *handleTable) lookup(key string, hash uint32) *lruHandle {
+func (t *handleTable) lookup(key []byte, hash uint32) *lruHandle {
 	return *t.findPointer(key, hash)
 }
 
@@ -60,7 +61,7 @@ func (t *handleTable) insert(h *lruHandle) *lruHandle {
 	return old
 }
 
-func (t *handleTable) remove(key string, hash uint32) *lruHandle {
+func (t *handleTable) remove(key []byte, hash uint32) *lruHandle {
 	ptr := t.findPointer(key, hash)
 	result := *ptr
 	if result != nil {
@@ -70,9 +71,10 @@ func (t *handleTable) remove(key string, hash uint32) *lruHandle {
 	return result
 }
 
-func (t *handleTable) findPointer(key string, hash uint32) **lruHandle {
+func (t *handleTable) findPointer(key []byte, hash uint32) **lruHandle {
 	ptr := &t.list[hash&(t.length-1)]
-	for *ptr != nil && ((*ptr).hash != hash || (*ptr).key != key) {
+
+	for *ptr != nil && ((*ptr).hash != hash || bytes.Compare((*ptr).key, key) != 0) {
 		ptr = &(*ptr).nextHash
 	}
 	return ptr
@@ -145,24 +147,25 @@ func newLRUCache() *lruCache {
 	c.lru.prev = &c.lru
 	c.inUse.next = &c.inUse
 	c.inUse.prev = &c.inUse
-	runtime.SetFinalizer(c, func(cache *lruCache) {
-		if cache.inUse.next != &cache.inUse {
-			panic("lruCache: inUse.next != &inUse")
-		}
-		var next *lruHandle
-		for h := cache.lru.next; h != &cache.lru; h = next {
-			next = h.next
-			if !h.inCache {
-				panic("lruHandle: inCache not true")
-			}
-			h.inCache = false
-			if h.refs != 1 {
-				panic("lruHandle: refs != 1")
-			}
-			cache.unref(h)
-		}
-	})
 	return c
+}
+
+func (c *lruCache) finalize() {
+	if c.inUse.next != &c.inUse {
+		panic("lruCache: inUse.next != &inUse")
+	}
+	var next *lruHandle
+	for h := c.lru.next; h != &c.lru; h = next {
+		next = h.next
+		if !h.inCache {
+			panic("lruHandle: inCache not true")
+		}
+		h.inCache = false
+		if h.refs != 1 {
+			panic("lruHandle: refs != 1")
+		}
+		c.unref(h)
+	}
 }
 
 func (c *lruCache) ref(h *lruHandle) {
@@ -175,12 +178,12 @@ func (c *lruCache) ref(h *lruHandle) {
 
 func (c *lruCache) unref(h *lruHandle) {
 	if h.refs <= 0 {
-		panic("lruCache: lruHandle.refs <= 0")
+		panic("lruCache: refs <= 0")
 	}
 	h.refs--
 	if h.refs == 0 {
 		if h.inCache {
-			panic("lruCache: lruHandle.inCache is true")
+			panic("lruCache: inCache is true")
 		}
 		h.deleter(h.key, h.value)
 	} else if h.inCache && h.refs == 1 {
@@ -201,7 +204,7 @@ func (c *lruCache) lruAppend(list *lruHandle, h *lruHandle) {
 	h.next.prev = h
 }
 
-func (c *lruCache) lookup(key string, hash uint32) Handle {
+func (c *lruCache) lookup(key []byte, hash uint32) Handle {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	h := c.table.lookup(key, hash)
@@ -218,7 +221,7 @@ func (c *lruCache) release(h *lruHandle) {
 	c.unref(h)
 }
 
-func (c *lruCache) insert(key string, hash uint32, value interface{}, charge int, deleter Deleter) Handle {
+func (c *lruCache) insert(key []byte, hash uint32, value interface{}, charge int, deleter Deleter) Handle {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	h := &lruHandle{
@@ -267,7 +270,7 @@ func (c *lruCache) finishErase(h *lruHandle) bool {
 	return h != nil
 }
 
-func (c *lruCache) erase(key string, hash uint32) {
+func (c *lruCache) erase(key []byte, hash uint32) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.finishErase(c.table.remove(key, hash))
@@ -301,12 +304,12 @@ type shardedLRUCache struct {
 	lastID  uint64
 }
 
-func (c *shardedLRUCache) Insert(key string, value interface{}, charge int, deleter Deleter) Handle {
+func (c *shardedLRUCache) Insert(key []byte, value interface{}, charge int, deleter Deleter) Handle {
 	hash := hashSlice(key)
 	return c.shard[shard(hash)].insert(key, hash, value, charge, deleter)
 }
 
-func (c *shardedLRUCache) Lookup(key string) Handle {
+func (c *shardedLRUCache) Lookup(key []byte) Handle {
 	hash := hashSlice(key)
 	return c.shard[shard(hash)].lookup(key, hash)
 }
@@ -327,12 +330,12 @@ func (c *shardedLRUCache) Value(handle Handle) interface{} {
 	return h.value
 }
 
-func (c *shardedLRUCache) Erase(key string) {
+func (c *shardedLRUCache) Erase(key []byte) {
 	hash := hashSlice(key)
 	c.shard[shard(hash)].erase(key, hash)
 }
 
-func (c *shardedLRUCache) NewID() uint64 {
+func (c *shardedLRUCache) NewId() uint64 {
 	c.idMutex.Lock()
 	defer c.idMutex.Unlock()
 	c.lastID++
@@ -340,21 +343,27 @@ func (c *shardedLRUCache) NewID() uint64 {
 }
 
 func (c *shardedLRUCache) Prune() {
-	for _, s := range c.shard {
-		s.prune()
+	for s := 0; s < numShards; s++ {
+		c.shard[s].prune()
 	}
 }
 
 func (c *shardedLRUCache) TotalCharge() int {
 	total := 0
-	for _, s := range c.shard {
-		total += s.totalCharge()
+	for s := 0; s < numShards; s++ {
+		total += c.shard[s].totalCharge()
 	}
 	return total
 }
 
-func hashSlice(b string) uint32 {
-	return util.Hash([]byte(b), 0)
+func (c *shardedLRUCache) Finalize() {
+	for s := 0; s < numShards; s++ {
+		c.shard[s].finalize()
+	}
+}
+
+func hashSlice(b []byte) uint32 {
+	return util.Hash(b, 0)
 }
 
 func shard(hash uint32) uint32 {
