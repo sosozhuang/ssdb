@@ -3,7 +3,6 @@ package util
 import (
 	"os"
 	"reflect"
-	"ssdb"
 	"strconv"
 	"testing"
 )
@@ -28,6 +27,7 @@ func AssertEqual(expected, actual interface{}, s string, t *testing.T) {
 	type2 := reflect.TypeOf(actual)
 	if type1.Kind() != type2.Kind() {
 		t.Errorf("Test [%s] failed, expected type: [%s], actual: [%s].\n", s, type1.String(), type2.String())
+		return
 	}
 	if type1.Kind() == reflect.Struct || type1.Kind() == reflect.Slice || type1.Kind() == reflect.Array {
 		if !reflect.DeepEqual(expected, actual) {
@@ -203,34 +203,34 @@ func AssertLessThanOrEqual(v1, v2 interface{}, s string, t *testing.T) {
 	var b bool
 	switch type1.Kind() {
 	case reflect.Int:
-		b = v1.(int) > v2.(int)
+		b = v1.(int) <= v2.(int)
 	case reflect.Int8:
-		b = v1.(int8) > v2.(int8)
+		b = v1.(int8) <= v2.(int8)
 	case reflect.Int16:
-		b = v1.(int16) > v2.(int16)
+		b = v1.(int16) <= v2.(int16)
 	case reflect.Int32:
-		b = v1.(int32) > v2.(int32)
+		b = v1.(int32) <= v2.(int32)
 	case reflect.Int64:
-		b = v1.(int64) > v2.(int64)
+		b = v1.(int64) <= v2.(int64)
 	case reflect.Uint:
-		b = v1.(uint) > v2.(uint)
+		b = v1.(uint) <= v2.(uint)
 	case reflect.Uint8:
-		b = v1.(uint8) > v2.(uint8)
+		b = v1.(uint8) <= v2.(uint8)
 	case reflect.Uint16:
-		b = v1.(uint16) > v2.(uint16)
+		b = v1.(uint16) <= v2.(uint16)
 	case reflect.Uint32:
-		b = v1.(uint32) > v2.(uint32)
+		b = v1.(uint32) <= v2.(uint32)
 	case reflect.Uint64:
-		b = v1.(uint64) > v2.(uint64)
+		b = v1.(uint64) <= v2.(uint64)
 	case reflect.Uintptr:
-		b = v1.(uintptr) > v2.(uintptr)
+		b = v1.(uintptr) <= v2.(uintptr)
 	case reflect.Float32:
-		b = v1.(float32) > v2.(float32)
+		b = v1.(float32) <= v2.(float32)
 	case reflect.Float64:
-		b = v1.(float64) > v2.(float64)
+		b = v1.(float64) <= v2.(float64)
 	}
 	if !b {
-		t.Errorf("Test [%s] failed, expected: [%v] > [%v].\n", s, v1, v2)
+		t.Errorf("Test [%s] failed, expected: [%v] <= [%v].\n", s, v1, v2)
 	}
 }
 
@@ -260,9 +260,4 @@ func RandomSeed() (result int) {
 		result = 301
 	}
 	return
-}
-
-func TmpDir() string {
-	dir, _ := ssdb.DefaultEnv().GetTestDirectory()
-	return dir
 }
