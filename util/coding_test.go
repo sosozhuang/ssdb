@@ -15,10 +15,7 @@ func TestFixed32(t *testing.T) {
 	var actual uint32
 	size := unsafe.Sizeof(actual)
 	for v := uint32(0); v < 100000; v++ {
-		actual = DecodeFixed32(b)
-		if v != actual {
-			t.Errorf("%d != %d.\n", v, actual)
-		}
+		AssertEqual(v, DecodeFixed32(b), "DecodeFixed32", t)
 		b = b[size:]
 	}
 }
@@ -38,21 +35,13 @@ func TestFixed64(t *testing.T) {
 	for power := 0; power <= 63; power++ {
 		v = 1 << uint(power)
 		actual = DecodeFixed64(b)
-		if v-1 != actual {
-			t.Errorf("%d != %d.\n", v-1, actual)
-		}
+		AssertEqual(v-1, DecodeFixed64(b), "DecodeFixed64", t)
 		b = b[size:]
 
-		actual = DecodeFixed64(b)
-		if v+0 != actual {
-			t.Errorf("%d != %d.\n", v+0, actual)
-		}
+		AssertEqual(v, DecodeFixed64(b), "DecodeFixed64", t)
 		b = b[size:]
 
-		actual = DecodeFixed64(b)
-		if v+1 != actual {
-			t.Errorf("%d != %d.\n", v+1, actual)
-		}
+		AssertEqual(v+1, DecodeFixed64(b), "DecodeFixed64", t)
 		b = b[size:]
 	}
 }
@@ -60,23 +49,23 @@ func TestFixed64(t *testing.T) {
 func TestEncodingOutput(t *testing.T) {
 	dst := make([]byte, 0)
 	PutFixed32(&dst, 0x04030201)
-	TestEqual(4, len(dst), "dst length", t)
-	TestEqual(0x01, int(dst[0]), "dst[0]", t)
-	TestEqual(0x02, int(dst[1]), "dst[1]", t)
-	TestEqual(0x03, int(dst[2]), "dst[2]", t)
-	TestEqual(0x04, int(dst[3]), "dst[3]", t)
+	AssertEqual(4, len(dst), "dst length", t)
+	AssertEqual(0x01, int(dst[0]), "dst[0]", t)
+	AssertEqual(0x02, int(dst[1]), "dst[1]", t)
+	AssertEqual(0x03, int(dst[2]), "dst[2]", t)
+	AssertEqual(0x04, int(dst[3]), "dst[3]", t)
 
 	dst = make([]byte, 0)
 	PutFixed64(&dst, 0x0807060504030201)
-	TestEqual(8, len(dst), "dst length", t)
-	TestEqual(0x01, int(dst[0]), "dst[0]", t)
-	TestEqual(0x02, int(dst[1]), "dst[1]", t)
-	TestEqual(0x03, int(dst[2]), "dst[2]", t)
-	TestEqual(0x04, int(dst[3]), "dst[3]", t)
-	TestEqual(0x05, int(dst[4]), "dst[4]", t)
-	TestEqual(0x06, int(dst[5]), "dst[5]", t)
-	TestEqual(0x07, int(dst[6]), "dst[6]", t)
-	TestEqual(0x08, int(dst[7]), "dst[7]", t)
+	AssertEqual(8, len(dst), "dst length", t)
+	AssertEqual(0x01, int(dst[0]), "dst[0]", t)
+	AssertEqual(0x02, int(dst[1]), "dst[1]", t)
+	AssertEqual(0x03, int(dst[2]), "dst[2]", t)
+	AssertEqual(0x04, int(dst[3]), "dst[3]", t)
+	AssertEqual(0x05, int(dst[4]), "dst[4]", t)
+	AssertEqual(0x06, int(dst[5]), "dst[5]", t)
+	AssertEqual(0x07, int(dst[6]), "dst[6]", t)
+	AssertEqual(0x08, int(dst[7]), "dst[7]", t)
 }
 
 func TestVarInt32(t *testing.T) {
@@ -92,10 +81,10 @@ func TestVarInt32(t *testing.T) {
 	for i := uint32(0); i < 32*32; i++ {
 		expected = (i / 32) << (i % 32)
 		j = GetVarInt32Ptr(s[p:], &actual)
-		TestTrue(j != -1, "j != -1", t)
+		AssertTrue(j != -1, "j != -1", t)
 		p += j
-		TestEqual(expected, actual, "GetVarInt32Ptr", t)
-		TestEqual(VarIntLength(uint64(actual)), j, "VarIntLength", t)
+		AssertEqual(expected, actual, "GetVarInt32Ptr", t)
+		AssertEqual(VarIntLength(uint64(actual)), j, "VarIntLength", t)
 	}
 }
 
@@ -117,17 +106,17 @@ func TestVarInt64(t *testing.T) {
 	var p, j int
 	for i := 0; i < len(values); i++ {
 		j = GetVarInt64Ptr(b[p:], &actual)
-		TestTrue(j != -1, "j != -1", t)
+		AssertTrue(j != -1, "j != -1", t)
 		p += j
-		TestEqual(values[i], actual, "values[i] == actual", t)
-		TestEqual(VarIntLength(actual), j, "VarIntLength", t)
+		AssertEqual(values[i], actual, "values[i] == actual", t)
+		AssertEqual(VarIntLength(actual), j, "VarIntLength", t)
 	}
 }
 
 func TestVarInt32Overflow(t *testing.T) {
 	var result uint32
 	b := []byte("\x81\x82\x83\x84\x85\x11")
-	TestTrue(GetVarInt32Ptr(b, &result) == -1, "GetVarInt32Ptr", t)
+	AssertEqual(GetVarInt32Ptr(b, &result), -1, "GetVarInt32Ptr", t)
 }
 
 func TestVarInt32Truncation(t *testing.T) {
@@ -136,9 +125,7 @@ func TestVarInt32Truncation(t *testing.T) {
 	PutVarInt32(&b, largeValue)
 	var result uint32
 	for l := 0; l < len(b)-1; l++ {
-		if GetVarInt32Ptr(b[:l], &result) != -1 {
-			t.Errorf("%d.\n", result)
-		}
+		AssertEqual(GetVarInt32Ptr(b[:l], &result), -1, "GetVarInt32Ptr", t)
 	}
 	if GetVarInt32Ptr(b, &result) == -1 {
 		t.Errorf(".\n")
@@ -151,9 +138,7 @@ func TestVarInt32Truncation(t *testing.T) {
 func TestVarInt64Overflow(t *testing.T) {
 	var result uint64
 	b := []byte("\x81\x82\x83\x84\x85\x81\x82\x83\x84\x85\x11")
-	if GetVarInt64Ptr(b, &result) != -1 {
-		t.Errorf("result is %d.\n", result)
-	}
+	AssertEqual(GetVarInt64Ptr(b, &result), -1, "GetVarInt64Ptr", t)
 }
 
 func TestVarInt64Truncation(t *testing.T) {
@@ -162,16 +147,10 @@ func TestVarInt64Truncation(t *testing.T) {
 	PutVarInt64(&b, largeValue)
 	var result uint64
 	for l := 0; l < len(b)-1; l++ {
-		if GetVarInt64Ptr(b[:l], &result) != -1 {
-			t.Errorf("%d.\n", result)
-		}
+		AssertEqual(GetVarInt64Ptr(b[:l], &result), -1, "GetVarInt64Ptr", t)
 	}
-	if GetVarInt64Ptr(b, &result) == -1 {
-		t.Errorf(".\n")
-	}
-	if largeValue != result {
-		t.Errorf("%d != %d.", largeValue, result)
-	}
+	AssertNotEqual(GetVarInt64Ptr(b, &result), -1, "GetVarInt64Ptr", t)
+	AssertEqual(largeValue, result, "largeValue", t)
 }
 
 func TestStrings(t *testing.T) {
@@ -183,34 +162,15 @@ func TestStrings(t *testing.T) {
 	PutLengthPrefixedSlice(&b, []byte(s))
 
 	var v []byte
-	if !GetLengthPrefixedSlice2(&b, &v) {
-		t.Errorf("")
-	}
-	if "" != string(v) {
-		t.Errorf("'' != %s.\n", string(v))
-	}
+	AssertTrue(GetLengthPrefixedSlice2(&b, &v), "GetLengthPrefixedSlice2", t)
+	AssertEqual("", string(v), "empty string", t)
 
-	if !GetLengthPrefixedSlice2(&b, &v) {
-		t.Errorf("")
-	}
-	if "foo" != string(v) {
-		t.Errorf("foo != %s.\n", string(v))
-	}
+	AssertTrue(GetLengthPrefixedSlice2(&b, &v), "GetLengthPrefixedSlice2", t)
+	AssertEqual("foo", string(v), "foo", t)
 
-	if !GetLengthPrefixedSlice2(&b, &v) {
-		t.Errorf("")
-	}
-	if "bar" != string(v) {
-		t.Errorf("bar != %s.\n", string(v))
-	}
-
-	if !GetLengthPrefixedSlice2(&b, &v) {
-		t.Errorf("")
-	}
-	if strings.Repeat("x", 200) != string(v) {
-		t.Errorf("x * 200 != %s.\n", string(v))
-	}
-	if len(b) != 0 {
-		t.Errorf("%d != 0", len(b))
-	}
+	AssertTrue(GetLengthPrefixedSlice2(&b, &v), "GetLengthPrefixedSlice2", t)
+	AssertEqual("bar", string(v), "bar", t)
+	AssertTrue(GetLengthPrefixedSlice2(&b, &v), "GetLengthPrefixedSlice2", t)
+	AssertEqual(strings.Repeat("x", 200), string(v), "x*200", t)
+	AssertEqual(len(b), 0, "len(b)", t)
 }

@@ -1,6 +1,7 @@
 package util
 
 import (
+	"reflect"
 	"unsafe"
 )
 
@@ -216,18 +217,15 @@ func GetVarInt64Ptr(input []byte, value *uint64) int {
 	return -1
 }
 
-func GetLengthPrefixedSlice1(input []byte, result *[]byte) int {
+func GetLengthPrefixedSlice1(input *[]byte, result *[]byte) bool {
 	var l uint32
-	i := GetVarInt32Ptr(input, &l)
-	if i == -1 {
-		return -1
+	if GetVarInt32(input, &l) && len(*input) >= int(l) {
+		*result = make([]byte, l)
+		copy(*result, (*input)[:l])
+		*input = (*input)[l:]
+		return true
 	}
-	if i+int(l) > len(input) {
-		return -1
-	}
-	*result = make([]byte, l, l)
-	copy(*result, input)
-	return int(l)
+	return false
 }
 
 func GetLengthPrefixedSlice2(input, result *[]byte) bool {
@@ -240,4 +238,18 @@ func GetLengthPrefixedSlice2(input, result *[]byte) bool {
 	} else {
 		return false
 	}
+}
+
+func SliceByteToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
+
+func StringToSliceByte(s string) []byte {
+	sh := *(*reflect.StringHeader)(unsafe.Pointer(&s))
+	bh := reflect.SliceHeader{
+		Data: sh.Data,
+		Len:  sh.Len,
+		Cap:  sh.Len,
+	}
+	return *(*[]byte)(unsafe.Pointer(&bh))
 }
