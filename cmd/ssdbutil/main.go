@@ -31,8 +31,8 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Usage: ssdbutil command...")
-	fmt.Fprintln(os.Stderr, "   dump files...         -- dump contents of specified files")
+	_, _ = fmt.Fprintln(os.Stderr, "Usage: ssdbutil command...")
+	_, _ = fmt.Fprintln(os.Stderr, "   dump files...         -- dump contents of specified files")
 }
 
 func handleDumpCommand(env ssdb.Env, args []string) bool {
@@ -65,4 +65,7 @@ func (p *stdoutPrinter) Flush() error {
 
 func (p *stdoutPrinter) Sync() error {
 	return nil
+}
+
+func (p *stdoutPrinter) Finalize() {
 }
