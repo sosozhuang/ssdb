@@ -48,13 +48,9 @@ func TestSimple(t *testing.T) {
 		}
 		bytes += s
 		allocated = append(allocated, pair{s, r})
-		if arena.MemoryUsage() < uint64(bytes) {
-			t.Errorf("MemoryUsage(%d) < bytes(%d).\n", arena.MemoryUsage(), bytes)
-		}
+		AssertTrue(arena.MemoryUsage() >= uint64(bytes), "MemoryUsage < bytes", t)
 		if i > n/10 {
-			if arena.MemoryUsage() > uint64(float64(bytes)*1.10) {
-				t.Errorf("MemoryUsage(%d) > bytes * 1.10(%f).\n", arena.MemoryUsage(), float64(bytes)*1.10)
-			}
+			AssertTrue(arena.MemoryUsage() <= uint64(float64(bytes)*1.10), "MemoryUsage > bytes * 1.10", t)
 		}
 	}
 
@@ -62,9 +58,7 @@ func TestSimple(t *testing.T) {
 	for i := 0; i < len(allocated); i++ {
 		for b := uint(0); b < allocated[i].s; b++ {
 			x = *(*byte)(unsafe.Pointer(uintptr(allocated[i].r) + uintptr(b)))
-			if int(x)&0xff != i%256 {
-				t.Errorf("(%d) & 0xff != %d.\n", x, i%256)
-			}
+			AssertTrue(int(x)&0xff == i%256, "x&0xff == i%256", t)
 		}
 	}
 }

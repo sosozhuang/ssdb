@@ -82,10 +82,9 @@ func (a *Arena) allocateFallback(bytes uint) unsafe.Pointer {
 }
 func (a *Arena) allocateNewBlock(blockBytes uint) unsafe.Pointer {
 	result := make([]byte, blockBytes)
-	h := (*reflect.SliceHeader)(unsafe.Pointer(&result))
 	a.blocks = append(a.blocks, result)
 	atomic.AddUint64(&a.memoryUsage, uint64(blockBytes+sliceHeaderSize))
-	return unsafe.Pointer(h.Data)
+	return unsafe.Pointer(&result[0])
 }
 
 func (a *Arena) MemoryUsage() uint64 {
