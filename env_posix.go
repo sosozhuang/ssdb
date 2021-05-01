@@ -168,15 +168,6 @@ func newPosixRandomAccessFile(file *os.File, limiter *limiter) RandomAccessFile 
 	} else {
 		f.file = file
 	}
-	runtime.SetFinalizer(f, func(f *posixRandomAccessFile) {
-		if f.hasPermanentFD {
-			if f.file == nil {
-				panic("randomAccessFile: file == nil")
-			}
-			_ = f.file.Close()
-			f.limiter.release()
-		}
-	})
 	return f
 }
 
@@ -204,6 +195,16 @@ func (f *posixRandomAccessFile) Read(b []byte, offset int64) (result []byte, n i
 	return
 }
 
+func (f *posixRandomAccessFile) Finalize() {
+	if f.hasPermanentFD {
+		if f.file == nil {
+			panic("posixRandomAccessFile: file == nil")
+		}
+		_ = f.file.Close()
+		f.limiter.release()
+	}
+}
+
 type posixMmapReadableFile struct {
 	data     []byte
 	length   int
@@ -218,9 +219,6 @@ func newPosixMmapReadableFile(filename string, data []byte, length int, limiter 
 		limiter:  limiter,
 		filename: filename,
 	}
-	runtime.SetFinalizer(f, func(f *posixMmapReadableFile) {
-		f.limiter.release()
-	})
 	return f
 }
 
@@ -232,4 +230,9 @@ func (f *posixMmapReadableFile) Read(b []byte, offset int64) (result []byte, n i
 	}
 	result = f.data[offset : offset+int64(n)]
 	return
+}
+
+func (f *posixMmapReadableFile) Finalize() {
+	syscall.Munmap(f.data)
+	f.limiter.release()
 }

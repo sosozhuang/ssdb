@@ -50,6 +50,7 @@ type SequentialFile interface {
 	// REQUIRES: External synchronization
 	Read(b []byte) ([]byte, int, error)
 	Skip(n uint64) error
+	Finalizer
 }
 
 type RandomAccessFile interface {
@@ -63,6 +64,7 @@ type RandomAccessFile interface {
 	//
 	// Safe for concurrent use by multiple threads.
 	Read(b []byte, offset int64) ([]byte, int, error)
+	Finalizer
 }
 
 type WritableFile interface {
@@ -70,9 +72,16 @@ type WritableFile interface {
 	Close() error
 	Flush() error
 	Sync() error
+	Finalizer
 }
 
 type FileLock interface {
+}
+
+func Log(infoLog *log.Logger, format string, v ...interface{}) {
+	if infoLog != nil {
+		infoLog.Printf(format, v...)
+	}
 }
 
 func WriteStringToFile(env Env, data []byte, name string) error {
@@ -355,6 +364,10 @@ func (f *sequentialFile) Skip(n uint64) error {
 	return nil
 }
 
+func (f *sequentialFile) Finalize() {
+	_ = f.file.Close()
+}
+
 func envError(filename string, err error) error {
 	if err == nil {
 		return util.IOError1(filename)
@@ -374,9 +387,6 @@ func newSequentialFile(filename string) (SequentialFile, error) {
 		filename: filename,
 		file:     file,
 	}
-	runtime.SetFinalizer(f, func(f *sequentialFile) {
-		_ = f.file.Close()
-	})
 	return f, nil
 }
 
@@ -403,11 +413,6 @@ func newWritableFile(file *os.File) *writableFile {
 		filename:   filename,
 		dirname:    path.Dir(filename),
 	}
-	runtime.SetFinalizer(f, func(f *writableFile) {
-		if f.file != nil {
-			_ = f.Close()
-		}
-	})
 	return f
 }
 
@@ -457,6 +462,12 @@ func (f *writableFile) Sync() (err error) {
 	}
 	err = syncFD(f.file, f.filename)
 	return
+}
+
+func (f *writableFile) Finalize() {
+	if f.file != nil {
+		_ = f.Close()
+	}
 }
 
 func (f *writableFile) flushBuffer() error {

@@ -17,12 +17,12 @@ func setPosixFileLimits(readOnlyFileLimit, mmapLimit int, t *testing.T) {
 }
 
 func setPosixReadOnlyFDLimit(limit int, t *testing.T) {
-	util.TestTrue(e == nil, "e == nil", t)
+	util.AssertTrue(e == nil, "e == nil", t)
 	openReadOnlyFileLimit = limit
 }
 
 func setPosixReadOnlyMMapLimit(limit int, t *testing.T) {
-	util.TestTrue(e == nil, "e == nil", t)
+	util.AssertTrue(e == nil, "e == nil", t)
 	defaultMmapLimit = limit
 }
 
@@ -58,7 +58,7 @@ func TestPosixOpenOnRead(t *testing.T) {
 		if result, _, err = file.Read(read, int64(i)); err != nil {
 			t.Error(err)
 		}
-		util.TestEqual(fileData[i], result[0], "read file", t)
+		util.AssertEqual(fileData[i], result[0], "read file", t)
 	}
 	files = nil
 	if err = env.DeleteFile(testFile); err != nil {

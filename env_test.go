@@ -19,10 +19,10 @@ func TestReadWrite(t *testing.T) {
 	rnd := util.NewRandom(uint32(util.RandomSeed()))
 	env := DefaultEnv()
 	testDir, err := env.GetTestDirectory()
-	util.TestNotError(err, "GetTestDirectory", t)
+	util.AssertNotError(err, "GetTestDirectory", t)
 	testFileName := testDir + "/open_on_read.txt"
 	writableFile, err := env.NewWritableFile(testFileName)
-	util.TestNotError(err, "NewWritableFile", t)
+	util.AssertNotError(err, "NewWritableFile", t)
 
 	const dataSize = 10 * 1048576
 	var (
@@ -33,19 +33,19 @@ func TestReadWrite(t *testing.T) {
 	for b.Len() < dataSize {
 		l = int(rnd.Skewed(18))
 		r = []byte(util.RandomString(rnd, l))
-		util.TestNotError(writableFile.Append(r), "WritableFile.Append", t)
+		util.AssertNotError(writableFile.Append(r), "WritableFile.Append", t)
 		b.Write(r)
 		if rnd.OneIn(10) {
-			util.TestNotError(writableFile.Flush(), "WritableFile.Flush", t)
+			util.AssertNotError(writableFile.Flush(), "WritableFile.Flush", t)
 		}
 	}
 	data := b.String()
-	util.TestNotError(writableFile.Sync(), "Writable.Sync", t)
-	util.TestNotError(writableFile.Close(), "Writable.Close", t)
+	util.AssertNotError(writableFile.Sync(), "Writable.Sync", t)
+	util.AssertNotError(writableFile.Close(), "Writable.Close", t)
 	writableFile = nil
 
 	sequentialFile, err := env.NewSequentialFile(testFileName)
-	util.TestNotError(err, "Env.NewSequentialFile", t)
+	util.AssertNotError(err, "Env.NewSequentialFile", t)
 	var (
 		readResult strings.Builder
 		d          int
@@ -64,12 +64,12 @@ func TestReadWrite(t *testing.T) {
 		}
 		read, _, err = sequentialFile.Read(scratch)
 		if l > 0 {
-			util.TestTrue(len(read) > 0, "", t)
+			util.AssertTrue(len(read) > 0, "", t)
 		}
-		util.TestTrue(len(read) <= l, "", t)
+		util.AssertTrue(len(read) <= l, "", t)
 		readResult.Write(read)
 	}
-	util.TestEqual(readResult.String(), data, "", t)
+	util.AssertEqual(readResult.String(), data, "", t)
 }
 
 func TestRunImmediately(t *testing.T) {
@@ -77,7 +77,7 @@ func TestRunImmediately(t *testing.T) {
 	env := DefaultEnv()
 	env.Schedule(setAtomicBool, &called)
 	env.SleepForMicroseconds(delayMicros)
-	util.TestTrue(atomic.LoadUint32(&called) == 1, "Env.Schedule", t)
+	util.AssertTrue(atomic.LoadUint32(&called) == 1, "Env.Schedule", t)
 }
 
 type callback struct {
@@ -89,7 +89,7 @@ type callback struct {
 func run(arg interface{}) {
 	c := arg.(*callback)
 	currentId := atomic.LoadInt32(c.lastId)
-	util.TestEqual(c.id-1, currentId, "callback id", c.t)
+	util.AssertEqual(c.id-1, currentId, "callback id", c.t)
 	atomic.StoreInt32(c.lastId, c.id)
 }
 
@@ -106,17 +106,17 @@ func TestRunMany(t *testing.T) {
 	env.Schedule(run, &callback4)
 
 	env.SleepForMicroseconds(delayMicros)
-	util.TestEqual(int32(4), atomic.LoadInt32(&lastId), "callback.lastId", t)
+	util.AssertEqual(int32(4), atomic.LoadInt32(&lastId), "callback.lastId", t)
 }
 
-type state struct {
+type threadState struct {
 	mu         sync.Mutex
 	val        int
 	numRunning int
 }
 
 func ThreadBody(arg interface{}) {
-	s := arg.(*state)
+	s := arg.(*threadState)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.val += 1
@@ -124,7 +124,7 @@ func ThreadBody(arg interface{}) {
 }
 
 func TestStartThread(t *testing.T) {
-	state := &state{
+	state := &threadState{
 		val:        0,
 		numRunning: 3,
 	}
@@ -144,72 +144,72 @@ func TestStartThread(t *testing.T) {
 	}
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	util.TestEqual(3, state.val, "state.val", t)
+	util.AssertEqual(3, state.val, "state.val", t)
 }
 
 func TestOpenNonExistentFile(t *testing.T) {
 	env := DefaultEnv()
 	testDir, err := env.GetTestDirectory()
-	util.TestNotError(err, "Env.GetTestDirectory", t)
+	util.AssertNotError(err, "Env.GetTestDirectory", t)
 	nonExistentFile := testDir + "/non_existent_file"
-	util.TestFalse(env.FileExists(nonExistentFile), "Env.FileExists", t)
+	util.AssertFalse(env.FileExists(nonExistentFile), "Env.FileExists", t)
 
 	_, err = env.NewRandomAccessFile(nonExistentFile)
-	util.TestTrue(IsNotFound(err), "Env.NewRandomAccessFile", t)
+	util.AssertTrue(IsNotFound(err), "Env.NewRandomAccessFile", t)
 	_, err = env.NewSequentialFile(nonExistentFile)
-	util.TestTrue(IsNotFound(err), "Env.NewSequentialFile", t)
+	util.AssertTrue(IsNotFound(err), "Env.NewSequentialFile", t)
 }
 
 func TestReopenWritableFile(t *testing.T) {
 	env := DefaultEnv()
 	testDir, err := env.GetTestDirectory()
-	util.TestNotError(err, "Env.GetTestDirectory", t)
+	util.AssertNotError(err, "Env.GetTestDirectory", t)
 	testFileName := testDir + "/reopen_writable_file.txt"
 	_ = env.DeleteFile(testFileName)
 
 	writableFile, err := env.NewWritableFile(testFileName)
-	util.TestNotError(err, "Env.NewWritableFile", t)
+	util.AssertNotError(err, "Env.NewWritableFile", t)
 	err = writableFile.Append([]byte("hello world!"))
-	util.TestNotError(err, "WritableFile.Append", t)
+	util.AssertNotError(err, "WritableFile.Append", t)
 	err = writableFile.Close()
-	util.TestNotError(err, "WritableFile.Close", t)
+	util.AssertNotError(err, "WritableFile.Close", t)
 	writableFile = nil
 
 	writableFile, err = env.NewWritableFile(testFileName)
-	util.TestNotError(err, "Env.NewWritableFile", t)
+	util.AssertNotError(err, "Env.NewWritableFile", t)
 	err = writableFile.Append([]byte("42"))
-	util.TestNotError(err, "WritableFile.Append", t)
+	util.AssertNotError(err, "WritableFile.Append", t)
 	err = writableFile.Close()
-	util.TestNotError(err, "WritableFile.Close", t)
+	util.AssertNotError(err, "WritableFile.Close", t)
 
 	b, err := ReadFileToString(env, testFileName)
-	util.TestEqual("42", string(b), "ReadFileToString", t)
+	util.AssertEqual("42", string(b), "ReadFileToString", t)
 	_ = env.DeleteFile(testFileName)
 }
 
 func TestReopenAppendableFile(t *testing.T) {
 	env := DefaultEnv()
 	testDir, err := env.GetTestDirectory()
-	util.TestNotError(err, "Env.GetTestDirectory", t)
+	util.AssertNotError(err, "Env.GetTestDirectory", t)
 	testFileName := testDir + "/reopen_appendable_file.txt"
 	_ = env.DeleteFile(testFileName)
 
 	appendableFile, err := env.NewAppendableFile(testFileName)
-	util.TestNotError(err, "Env.NewAppendableFile", t)
+	util.AssertNotError(err, "Env.NewAppendableFile", t)
 	err = appendableFile.Append([]byte("hello world!"))
-	util.TestNotError(err, "AppendableFile.Append", t)
+	util.AssertNotError(err, "AppendableFile.Append", t)
 	err = appendableFile.Close()
-	util.TestNotError(err, "AppendableFile.Close", t)
+	util.AssertNotError(err, "AppendableFile.Close", t)
 	appendableFile = nil
 
 	appendableFile, err = env.NewAppendableFile(testFileName)
-	util.TestNotError(err, "Env.NewAppendableFile", t)
+	util.AssertNotError(err, "Env.NewAppendableFile", t)
 	err = appendableFile.Append([]byte("42"))
-	util.TestNotError(err, "AppendableFile.Append", t)
+	util.AssertNotError(err, "AppendableFile.Append", t)
 	err = appendableFile.Close()
-	util.TestNotError(err, "AppendableFile.Close", t)
+	util.AssertNotError(err, "AppendableFile.Close", t)
 
 	b, err := ReadFileToString(env, testFileName)
-	util.TestEqual("hello world!42", string(b), "ReadFileToString", t)
+	util.AssertEqual("hello world!42", string(b), "ReadFileToString", t)
 	_ = env.DeleteFile(testFileName)
 }

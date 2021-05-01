@@ -195,9 +195,6 @@ func newWindowsRandomAccessFile(file *os.File) RandomAccessFile {
 	f := &windowsRandomAccessFile{
 		file: file,
 	}
-	runtime.SetFinalizer(f, func(f *windowsRandomAccessFile) {
-		_ = f.file.Close()
-	})
 	return f
 }
 
@@ -211,6 +208,10 @@ func (f *windowsRandomAccessFile) Read(b []byte, offset int64) (result []byte, n
 	return
 }
 
+func (f *windowsRandomAccessFile) Finalize() {
+	_ = f.file.Close()
+}
+
 type windowsMmapReadableFile struct {
 	pointer  unsafe.Pointer
 	data     []byte
@@ -220,7 +221,6 @@ type windowsMmapReadableFile struct {
 }
 
 func newWindowsMmapReadableFile(filename string, pointer unsafe.Pointer, length int, limiter *limiter) RandomAccessFile {
-
 	f := &windowsMmapReadableFile{
 		pointer: pointer,
 		data: *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
@@ -232,10 +232,6 @@ func newWindowsMmapReadableFile(filename string, pointer unsafe.Pointer, length 
 		limiter:  limiter,
 		filename: filename,
 	}
-	runtime.SetFinalizer(f, func(f *windowsMmapReadableFile) {
-		_ = syscall.UnmapViewOfFile(uintptr(pointer))
-		f.limiter.release()
-	})
 	return f
 }
 
@@ -247,4 +243,9 @@ func (f *windowsMmapReadableFile) Read(b []byte, offset int64) (result []byte, n
 	}
 	result = f.data[offset : offset+int64(n)]
 	return
+}
+
+func (f *windowsMmapReadableFile) Finalize() {
+	_ = syscall.UnmapViewOfFile(uintptr(pointer))
+	f.limiter.release()
 }
