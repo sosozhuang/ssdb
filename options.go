@@ -1,5 +1,7 @@
 package ssdb
 
+import "log"
+
 type CompressionType uint8
 
 const (
@@ -13,11 +15,12 @@ type Options struct {
 	ErrorIfExists        bool
 	ParanoidChecks       bool
 	Env                  Env
-	WriteBufferSize      uint
+	InfoLog              *log.Logger
+	WriteBufferSize      int
 	MaxOpenFiles         int
-	BlockSize            uint
+	BlockSize            int
 	BlockRestartInterval int
-	MaxFileSize          uint
+	MaxFileSize          int
 	BlockCache           Cache
 	CompressionType      CompressionType
 	ReuseLogs            bool
@@ -31,6 +34,7 @@ func NewOptions() *Options {
 		ErrorIfExists:        false,
 		ParanoidChecks:       false,
 		Env:                  DefaultEnv(),
+		InfoLog:              nil,
 		WriteBufferSize:      4 * 1024 * 1024,
 		MaxOpenFiles:         1000,
 		BlockSize:            4 * 1024,
