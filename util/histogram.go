@@ -24,7 +24,7 @@ var bucketLimit = [numBuckets]float64{
 	7000000000.0, 8000000000.0, 9000000000.0, 1e200,
 }
 
-type histogram struct {
+type Histogram struct {
 	min        float64
 	max        float64
 	num        float64
@@ -33,7 +33,7 @@ type histogram struct {
 	buckets    [numBuckets]float64
 }
 
-func (h *histogram) Clear() {
+func (h *Histogram) Clear() {
 	h.min = bucketLimit[numBuckets-1]
 	h.max = 0
 	h.num = 0
@@ -44,7 +44,7 @@ func (h *histogram) Clear() {
 	}
 }
 
-func (h *histogram) Add(value float64) {
+func (h *Histogram) Add(value float64) {
 	b := 0
 	for b < numBuckets-1 && bucketLimit[b] <= value {
 		b++
@@ -61,7 +61,7 @@ func (h *histogram) Add(value float64) {
 	h.sumSquares += value * value
 }
 
-func (h *histogram) Merge(other *histogram) {
+func (h *Histogram) Merge(other *Histogram) {
 	if other.min < h.min {
 		h.min = other.min
 	}
@@ -76,7 +76,7 @@ func (h *histogram) Merge(other *histogram) {
 	}
 }
 
-func (h *histogram) String() string {
+func (h *Histogram) String() string {
 	buffer := bytes.NewBufferString("")
 	fmt.Fprintf(buffer, "Count: %.0f  Average: %.4f  StdDev: %.2f\n", h.num, h.average(), h.standardDeviation())
 	if h.num == 0.0 {
@@ -106,11 +106,11 @@ func (h *histogram) String() string {
 	return buffer.String()
 }
 
-func (h *histogram) median() float64 {
+func (h *Histogram) median() float64 {
 	return h.percentile(50)
 }
 
-func (h *histogram) percentile(p float64) float64 {
+func (h *Histogram) percentile(p float64) float64 {
 	threshold := h.num * (p / 100.0)
 	sum := 0.0
 	var leftPoint, rightPoint, leftSum, rightSum, pos, r float64
@@ -139,14 +139,14 @@ func (h *histogram) percentile(p float64) float64 {
 	return h.max
 }
 
-func (h *histogram) average() float64 {
+func (h *Histogram) average() float64 {
 	if h.num == 0 {
 		return 0
 	}
 	return h.sum / h.num
 }
 
-func (h *histogram) standardDeviation() float64 {
+func (h *Histogram) standardDeviation() float64 {
 	if h.num == 0 {
 		return 0
 	}
