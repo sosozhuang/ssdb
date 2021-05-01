@@ -6,3 +6,7 @@ const (
 	TypeDeletion = ValueType(iota)
 	TypeValue
 )
+
+type Finalizer interface {
+	Finalize()
+}
