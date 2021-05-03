@@ -87,17 +87,20 @@ func (t *handleTable) resize() {
 	}
 	newList := make([]*lruHandle, newLength)
 	count := uint32(0)
-	var h *lruHandle
-	var hash uint32
-	var next, ptr *lruHandle
+	var (
+		h    *lruHandle
+		hash uint32
+		next *lruHandle
+		ptr  **lruHandle
+	)
 	for i := uint32(0); i < t.length; i++ {
 		h = t.list[i]
 		for h != nil {
 			next = h.nextHash
 			hash = h.hash
-			ptr = newList[hash&(newLength-1)]
-			h.nextHash = ptr
-			newList[hash&(newLength-1)] = h
+			ptr = &newList[hash&(newLength-1)]
+			h.nextHash = *ptr
+			*ptr = h
 			h = next
 			count++
 		}
@@ -264,7 +267,7 @@ func (c *lruCache) finishErase(h *lruHandle) bool {
 		}
 		c.lruRemove(h)
 		h.inCache = false
-		c.usage = h.charge
+		c.usage -= h.charge
 		c.unref(h)
 	}
 	return h != nil
@@ -299,7 +302,7 @@ const (
 )
 
 type shardedLRUCache struct {
-	shard   []*lruCache
+	shard   [numShards]*lruCache
 	idMutex sync.Mutex
 	lastID  uint64
 }
@@ -372,7 +375,6 @@ func shard(hash uint32) uint32 {
 
 func NewLRUCache(capacity int) Cache {
 	c := &shardedLRUCache{
-		shard:  make([]*lruCache, numShards),
 		lastID: 0,
 	}
 	perShard := (capacity + (numShards - 1)) / numShards

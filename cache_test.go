@@ -1,7 +1,6 @@
 package ssdb
 
 import (
-	"runtime"
 	"ssdb/util"
 	"testing"
 )
@@ -49,8 +48,6 @@ func (t *cacheTest) lookup(key int) int {
 		r = -1
 	} else {
 		r = decodeValue(t.cache.Value(handle))
-	}
-	if handle != nil {
 		t.cache.Release(handle)
 	}
 	return r
@@ -92,136 +89,71 @@ func deleter(key []byte, value interface{}) {
 }
 
 func TestHitAndMiss(t *testing.T) {
-	if -1 != current.lookup(100) {
-		t.Error("100")
-	}
+	util.AssertEqual(-1, current.lookup(100), "lookup", t)
 
 	current.insert1(100, 101)
-	if 101 != current.lookup(100) {
-		t.Error("100")
-	}
-	if -1 != current.lookup(200) {
-		t.Error("200")
-	}
-	if -1 != current.lookup(300) {
-		t.Error("300")
-	}
+	util.AssertEqual(101, current.lookup(100), "lookup", t)
+
+	util.AssertEqual(-1, current.lookup(200), "lookup", t)
+	util.AssertEqual(-1, current.lookup(300), "lookup", t)
 
 	current.insert1(200, 201)
-	if 101 != current.lookup(100) {
-		t.Error("100")
-	}
-	if 201 != current.lookup(200) {
-		t.Error("200")
-	}
-	if -1 != current.lookup(300) {
-		t.Error("300")
-	}
+	util.AssertEqual(101, current.lookup(100), "lookup", t)
+	util.AssertEqual(201, current.lookup(200), "lookup", t)
+	util.AssertEqual(-1, current.lookup(300), "lookup", t)
 
 	current.insert1(100, 102)
-	if 102 != current.lookup(100) {
-		t.Error("100")
-	}
-	if 201 != current.lookup(200) {
-		t.Error("200")
-	}
-	if -1 != current.lookup(300) {
-		t.Error("300")
-	}
+	util.AssertEqual(102, current.lookup(100), "lookup", t)
+	util.AssertEqual(201, current.lookup(200), "lookup", t)
+	util.AssertEqual(-1, current.lookup(300), "lookup", t)
 
-	if 1 != len(current.deletedKeys) {
-		t.Error("1")
-	}
-	if 100 != current.deletedKeys[0] {
-		t.Error("100")
-	}
-	if 101 != current.deletedValues[0] {
-		t.Error("101")
-	}
+	util.AssertEqual(1, len(current.deletedKeys), "length of deletedKeys", t)
+	util.AssertEqual(100, current.deletedKeys[0], "deletedKeys[0]", t)
+	util.AssertEqual(101, current.deletedValues[0], "deletedValues[0]", t)
 }
 
 func TestErase(t *testing.T) {
 	current.erase(200)
-	if 0 != len(current.deletedKeys) {
-		t.Error("0")
-	}
+	util.AssertEqual(0, len(current.deletedKeys), "length of deletedKeys", t)
 
 	current.insert1(100, 101)
 	current.insert1(200, 201)
 	current.erase(100)
-	if -1 != current.lookup(100) {
-		t.Error("-1")
-	}
-	if 201 != current.lookup(200) {
-		t.Error("201")
-	}
-	if 1 != len(current.deletedKeys) {
-		t.Error("1")
-	}
-	if 100 != current.deletedKeys[0] {
-		t.Error("100")
-	}
-	if 101 != current.deletedValues[0] {
-		t.Error("101")
-	}
+	util.AssertEqual(-1, current.lookup(100), "lookup", t)
+	util.AssertEqual(201, current.lookup(200), "lookup", t)
+	util.AssertEqual(1, len(current.deletedKeys), "length of deletedKeys", t)
+	util.AssertEqual(100, current.deletedKeys[0], "deletedKeys[0]", t)
+	util.AssertEqual(101, current.deletedValues[0], "deletedValues[0]", t)
 
 	current.erase(100)
-	if -1 != current.lookup(100) {
-		t.Error("-1")
-	}
-	if 201 != current.lookup(200) {
-		t.Error("201")
-	}
-	if 1 != len(current.deletedKeys) {
-		t.Error("1")
-	}
+	util.AssertEqual(-1, current.lookup(100), "lookup", t)
+	util.AssertEqual(201, current.lookup(200), "lookup", t)
+	util.AssertEqual(1, len(current.deletedKeys), "length of deletedKeys", t)
 }
 
 func TestEntriesArePinned(t *testing.T) {
 	current.insert1(100, 101)
 	h1 := current.cache.Lookup(encodeCacheKey(100))
-	if 101 != decodeValue(current.cache.Value(h1)) {
-		t.Error("101")
-	}
+	util.AssertEqual(101, decodeValue(current.cache.Value(h1)), "cache value", t)
 
 	current.insert1(100, 102)
 	h2 := current.cache.Lookup(encodeCacheKey(100))
-	if 102 != decodeValue(current.cache.Value(h2)) {
-		t.Error("201")
-	}
-	if 0 != len(current.deletedKeys) {
-		t.Error("0")
-	}
+	util.AssertEqual(102, decodeValue(current.cache.Value(h2)), "cache value", t)
+	util.AssertEqual(0, len(current.deletedKeys), "length of deletedKeys", t)
 
 	current.cache.Release(h1)
-	if 1 != len(current.deletedKeys) {
-		t.Error("1")
-	}
-	if 100 != current.deletedKeys[0] {
-		t.Error("100")
-	}
-	if 101 != current.deletedValues[0] {
-		t.Error("101")
-	}
+	util.AssertEqual(1, len(current.deletedKeys), "length of deletedKeys", t)
+	util.AssertEqual(100, current.deletedKeys[0], "deletedKeys[0]", t)
+	util.AssertEqual(101, current.deletedValues[0], "deletedValues[0]", t)
 
 	current.erase(100)
-	if -1 != current.lookup(100) {
-		t.Error("-1")
-	}
-	if 1 != len(current.deletedKeys) {
-		t.Error("1")
-	}
+	util.AssertEqual(-1, current.lookup(100), "lookup", t)
+	util.AssertEqual(1, len(current.deletedKeys), "length of deletedKeys", t)
 
 	current.cache.Release(h2)
-	if 2 != len(current.deletedKeys) {
-		t.Error("1")
-	}
-	if 100 != current.deletedKeys[1] {
-		t.Error("100")
-	}
-	if 102 != current.deletedValues[1] {
-		t.Error("102")
-	}
+	util.AssertEqual(2, len(current.deletedKeys), "length of deletedKeys", t)
+	util.AssertEqual(100, current.deletedKeys[1], "deletedKeys[1]", t)
+	util.AssertEqual(102, current.deletedValues[1], "deletedValues[1]", t)
 }
 
 func TestEvictionPolicy(t *testing.T) {
@@ -232,23 +164,13 @@ func TestEvictionPolicy(t *testing.T) {
 
 	for i := 0; i < cacheSize+100; i++ {
 		current.insert1(1000+i, 2000+i)
-		if 2000+i != current.lookup(1000+i) {
-			t.Errorf("2000\n")
-		}
-		if 101 != current.lookup(100) {
-			t.Errorf("101\n")
-		}
+		util.AssertEqual(2000+i, current.lookup(1000+i), "lookup", t)
+		util.AssertEqual(101, current.lookup(100), "lookup", t)
 	}
 
-	if 101 != current.lookup(100) {
-		t.Errorf("101")
-	}
-	if -1 != current.lookup(200) {
-		t.Errorf("-1")
-	}
-	if 301 != current.lookup(300) {
-		t.Errorf("301")
-	}
+	util.AssertEqual(101, current.lookup(100), "lookup", t)
+	util.AssertEqual(-1, current.lookup(200), "lookup", t)
+	util.AssertEqual(301, current.lookup(300), "lookup", t)
 	current.cache.Release(h)
 }
 
@@ -259,9 +181,7 @@ func TestUseExceedsCacheSize(t *testing.T) {
 	}
 
 	for i := range h {
-		if 2000+i != current.lookup(1000+i) {
-			t.Errorf("%d, %d\n", 2000+i, 1000+i)
-		}
+		util.AssertEqual(2000+i, current.lookup(1000+i), "lookup", t)
 	}
 
 	for i := range h {
@@ -294,21 +214,15 @@ func TestHeavyEntries(t *testing.T) {
 		r = current.lookup(i)
 		if r >= 0 {
 			cachedWeight += weight
-			if 1000+i != r {
-				t.Errorf("1000 + i(%d) != r(%d)\n", i, r)
-			}
+			util.AssertEqual(1000+i, r, "1000+i", t)
 		}
 	}
-	if cachedWeight > cacheSize+cacheSize/10 {
-		t.Errorf("cachedWeight(%d) > cacheSize(%d) + cacheSize(%d) / 10\n", cachedWeight, cacheSize, cacheSize)
-	}
+	util.AssertLessThanOrEqual(cachedWeight, cacheSize+cacheSize/10, "cachedWeight", t)
 }
 
-func TestNewID(t *testing.T) {
+func TestNewId(t *testing.T) {
 	a, b := current.cache.NewId(), current.cache.NewId()
-	if a == b {
-		t.Errorf("a(%d) == b(%d)\n", a, b)
-	}
+	util.AssertNotEqual(a, b, "newId", t)
 }
 
 func TestPrune(t *testing.T) {
@@ -316,30 +230,17 @@ func TestPrune(t *testing.T) {
 	current.insert1(2, 200)
 
 	handle := current.cache.Lookup(encodeCacheKey(1))
-	if handle == nil {
-		t.Error("nil")
-	}
+	util.AssertTrue(handle != nil, "handle not nil", t)
 
 	current.cache.Prune()
 	current.cache.Release(handle)
 
-	if 100 != current.lookup(1) {
-		t.Error("100")
-	}
-	if -1 != current.lookup(2) {
-		t.Error("-1")
-	}
+	util.AssertEqual(100, current.lookup(1), "lookup", t)
+	util.AssertEqual(-1, current.lookup(2), "lookup", t)
 }
 
 func TestZeroSizeCache(t *testing.T) {
 	current.cache = NewLRUCache(0)
 	current.insert1(1, 100)
-	if -1 != current.lookup(1) {
-		t.Error("-1")
-	}
-}
-
-func TestFinalizer(t *testing.T) {
-	current = nil
-	runtime.GC()
+	util.AssertEqual(-1, current.lookup(1), "lookup", t)
 }
