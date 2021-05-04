@@ -14,14 +14,13 @@ type skipListKey interface{}
 type comparator func(a, b skipListKey) int
 type skipList struct {
 	comparator comparator
-	arena      *util.Arena
 	head       *node
 	maxHeight  uint32
 	rnd        *util.Random
 }
 
 func (l *skipList) insert(key skipListKey) {
-	prev := make([]*node, maxHeight)
+	prev := make([]*node, maxHeight, maxHeight)
 	x := l.findGreaterOrEqual(key, prev)
 
 	if !(x == nil || !l.equal(key, x.key)) {
@@ -37,7 +36,7 @@ func (l *skipList) insert(key skipListKey) {
 
 	x = l.newNode(key, height)
 	for i := 0; i < height; i++ {
-		x.noBarrierSetNext(i, prev[i].noBarrierGetNext(i))
+		x.noBarrierSetNext(i, prev[i].noBarrierNext(i))
 		prev[i].setNext(i, x)
 	}
 }
@@ -57,11 +56,10 @@ const (
 )
 
 func (l *skipList) newNode(key skipListKey, height int) *node {
-	pointer := l.arena.AllocateAligned(uint(nodeSize) + uint(pointerSize)*uint(height))
-	n := (*node)(pointer)
-	n.key = key
-	n.pointer = unsafe.Pointer(uintptr(pointer) + nodeSize)
-	return n
+	return &node{
+		key:   key,
+		nexts: make([]*node, height, height),
+	}
 }
 
 func (l *skipList) randomHeight() int {
@@ -92,7 +90,7 @@ func (l *skipList) findGreaterOrEqual(key skipListKey, prev []*node) *node {
 	level := l.getMaxHeight() - 1
 	var next *node
 	for {
-		next = x.getNext(level)
+		next = x.next(level)
 		if l.keyIsAfterNode(key, next) {
 			x = next
 		} else {
@@ -113,9 +111,9 @@ func (l *skipList) findLessThan(key skipListKey) *node {
 	level := l.getMaxHeight() - 1
 	var next *node
 	for {
-		next = x.getNext(level)
-		if next == nil || l.comparator(x.key, key) >= 0 {
-			if level >= 0 {
+		next = x.next(level)
+		if next == nil || l.comparator(next.key, key) >= 0 {
+			if level == 0 {
 				return x
 			} else {
 				level--
@@ -131,7 +129,7 @@ func (l *skipList) findLast() *node {
 	level := l.getMaxHeight() - 1
 	var next *node
 	for {
-		next = x.getNext(level)
+		next = x.next(level)
 		if next == nil {
 			if level == 0 {
 				return x
@@ -145,15 +143,16 @@ func (l *skipList) findLast() *node {
 }
 
 type node struct {
-	key     skipListKey
-	pointer unsafe.Pointer
+	key skipListKey
+	//pointer unsafe.Pointer
+	nexts []*node
 }
 
-func (n *node) getNext(i int) *node {
+func (n *node) next(i int) *node {
 	if i < 0 {
 		panic("node: i < 0")
 	}
-	p := unsafe.Pointer(uintptr(n.pointer) + uintptr(i)*pointerSize)
+	p := unsafe.Pointer(&n.nexts[i])
 	return *(**node)(atomic.LoadPointer(&p))
 }
 
@@ -161,24 +160,28 @@ func (n *node) setNext(i int, x *node) {
 	if i < 0 {
 		panic("node: i < 0")
 	}
-	p := unsafe.Pointer(uintptr(n.pointer) + uintptr(i)*pointerSize)
+	//p := unsafe.Pointer(uintptr(n.pointer) + uintptr(i)*pointerSize)
+	//atomic.StorePointer((*unsafe.Pointer)(p), unsafe.Pointer(x))
+	p := unsafe.Pointer(&n.nexts[i])
 	atomic.StorePointer((*unsafe.Pointer)(p), unsafe.Pointer(x))
 }
 
-func (n *node) noBarrierGetNext(i int) *node {
+func (n *node) noBarrierNext(i int) *node {
 	if i < 0 {
 		panic("node: i < 0")
 	}
-	p := unsafe.Pointer(uintptr(n.pointer) + uintptr(i)*pointerSize)
-	return *(**node)(p)
+	//p := unsafe.Pointer(uintptr(n.pointer) + uintptr(i)*pointerSize)
+	//return *(**node)(p)
+	return n.nexts[i]
 }
 
 func (n *node) noBarrierSetNext(i int, x *node) {
 	if i < 0 {
 		panic("node: i < 0")
 	}
-	p := unsafe.Pointer(uintptr(n.pointer) + uintptr(i)*pointerSize)
-	*(**node)(p) = x
+	//p := unsafe.Pointer(uintptr(n.pointer) + uintptr(i)*pointerSize)
+	//*(**node)(p) = x
+	n.nexts[i] = x
 }
 
 type skipListIterator struct {
@@ -195,7 +198,7 @@ func (i *skipListIterator) key() skipListKey {
 }
 
 func (i *skipListIterator) next() {
-	i.node = i.node.getNext(0)
+	i.node = i.node.next(0)
 }
 
 func (i *skipListIterator) prev() {
@@ -210,7 +213,7 @@ func (i *skipListIterator) seek(target skipListKey) {
 }
 
 func (i *skipListIterator) seekToFirst() {
-	i.node = i.list.head.getNext(0)
+	i.node = i.list.head.next(0)
 }
 
 func (i *skipListIterator) seekToLast() {
@@ -226,10 +229,9 @@ func newSkipListIterator(l *skipList) *skipListIterator {
 	}
 }
 
-func newSkipList(comparator comparator, arena *util.Arena) *skipList {
+func newSkipList(comparator comparator) *skipList {
 	l := &skipList{
 		comparator: comparator,
-		arena:      arena,
 		maxHeight:  1,
 		rnd:        util.NewRandom(0xdeadbeef),
 	}

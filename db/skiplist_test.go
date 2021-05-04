@@ -1,7 +1,6 @@
 package db
 
 import (
-	"container/heap"
 	"fmt"
 	"os"
 	"runtime"
@@ -18,8 +17,11 @@ import (
 type testKey uint64
 
 func compare(i1, i2 skipListKey) int {
-	a, _ := i1.(testKey)
-	b, _ := i2.(testKey)
+	a, ok1 := i1.(testKey)
+	b, ok2 := i2.(testKey)
+	if !ok1 || !ok2 {
+		panic("not testKey")
+	}
 	if a < b {
 		return -1
 	} else if a > b {
@@ -28,104 +30,107 @@ func compare(i1, i2 skipListKey) int {
 	return 0
 }
 
-type myHeap []uint64
+type testKeySlice []testKey
 
-func (h *myHeap) Less(i, j int) bool {
-	return (*h)[i] < (*h)[j]
+func (s testKeySlice) Less(i, j int) bool {
+	return (s)[i] < (s)[j]
 }
 
-func (h *myHeap) Swap(i, j int) {
-	(*h)[i], (*h)[j] = (*h)[j], (*h)[i]
+func (s testKeySlice) Swap(i, j int) {
+	(s)[i], (s)[j] = (s)[j], (s)[i]
 }
 
-func (h *myHeap) Len() int {
-	return len(*h)
+func (s testKeySlice) Len() int {
+	return len(s)
 }
 
-func (h *myHeap) Pop() (v interface{}) {
-	*h, v = (*h)[:h.Len()-1], (*h)[h.Len()-1]
-	return
-}
-
-func (h *myHeap) Push(v interface{}) {
-	*h = append(*h, v.(uint64))
-}
-
-func (h myHeap) element(i int) uint64 {
-	return h[i]
+func (s testKeySlice) element(i int) testKey {
+	return s[i]
 }
 
 func TestEmptySkipList(t *testing.T) {
-	arena := util.NewArena()
-	list := newSkipList(compare, arena)
-	util.AssertFalse(list.contains(10), "list contains 10", t)
+	list := newSkipList(compare)
+	util.AssertFalse(list.contains(testKey(10)), "list contains 10", t)
 
 	iter := newSkipListIterator(list)
 	util.AssertFalse(iter.valid(), "iter is not valid", t)
 	iter.seekToFirst()
 	util.AssertFalse(iter.valid(), "iter is not valid", t)
-	iter.seek(100)
+	iter.seek(testKey(100))
 	util.AssertFalse(iter.valid(), "iter is not valid", t)
 	iter.seekToLast()
 	util.AssertFalse(iter.valid(), "iter is not valid", t)
 }
 
 func TestInsertAndLookup(t *testing.T) {
-	n, r := uint64(2000), uint32(5000)
+	n, r := testKey(2000), testKey(5000)
 	rnd := util.NewRandom(1000)
-	keys := make(map[uint64]bool)
-	h := new(myHeap)
-	arena := util.NewArena()
-	list := newSkipList(compare, arena)
-	var key uint64
-	for i := uint64(0); i < n; i++ {
-		key = uint64(rnd.Next() % r)
-		if _, ok := keys[key]; !ok {
-			keys[key] = true
-			heap.Push(h, key)
+	testKeyMap := make(map[testKey]bool)
+	testKeys := testKeySlice(make([]testKey, 0, n))
+	list := newSkipList(compare)
+	var key testKey
+	for i := testKey(0); i < n; i++ {
+		key = testKey(rnd.Next() % uint32(r))
+		if _, ok := testKeyMap[key]; !ok {
+			testKeyMap[key] = true
+			testKeys = append(testKeys, key)
 			list.insert(key)
 		}
 	}
 
-	for i := uint64(0); i < n; i++ {
+	sort.Sort(testKeys)
+
+	for i := testKey(0); i < n; i++ {
 		if list.contains(i) {
-			_, ok := keys[i]
+			_, ok := testKeyMap[i]
 			util.AssertTrue(ok, "list contains key", t)
 		} else {
-			_, ok := keys[i]
-			util.AssertFalse(ok, "list contains key", t)
+			_, ok := testKeyMap[i]
+			util.AssertFalse(ok, "list not contains key", t)
 		}
 	}
 
 	iter := newSkipListIterator(list)
 	util.AssertFalse(iter.valid(), "iter is not valid", t)
-	iter.seek(0)
+	iter.seek(testKey(0))
 	util.AssertTrue(iter.valid(), "iter is valid", t)
-	util.AssertEqual(h.element(0), iter.key(), "first element equals to key", t)
+	util.AssertEqual(testKeys.element(0), iter.key(), "first element equals to key", t)
 
 	iter.seekToFirst()
 	util.AssertTrue(iter.valid(), "iter is valid", t)
-	util.AssertEqual(h.element(0), iter.key(), "first element equals to key", t)
+	util.AssertEqual(testKeys.element(0), iter.key(), "first element equals to key", t)
 
 	iter.seekToLast()
 	util.AssertTrue(iter.valid(), "iter is valid", t)
-	sort.Sort(h)
-	util.AssertEqual(h.element(h.Len()-1), iter.key(), "last element equals to key", t)
+	util.AssertEqual(testKeys.element(testKeys.Len()-1), iter.key(), "last element equals to key", t)
 
-	for i := uint32(0); i < r; i++ {
+	for i := testKey(0); i < r; i++ {
 		iter := newSkipListIterator(list)
 		iter.seek(i)
-
-		for j := 0; j < 3; j++ {
+		index := sort.Search(testKeys.Len(), func(x int) bool {
+			return testKeys.element(x) >= i
+		})
+		for j := testKey(0); j < 3; j++ {
+			if index >= testKeys.Len() {
+				util.AssertFalse(iter.valid(), "iter is not valid", t)
+				break
+			} else {
+				util.AssertTrue(iter.valid(), "iter is valid", t)
+				element := testKeys.element(index)
+				util.AssertEqual(element, iter.key(), "key", t)
+				index++
+				iter.next()
+			}
 		}
 	}
 
 	iter = newSkipListIterator(list)
-	iter.seekToLast()
-	for i := h.Len() - 1; i >= 0; i-- {
+	iter.seekToFirst()
+	for i := 0; i < testKeys.Len(); i++ {
 		util.AssertTrue(iter.valid(), "iter is valid", t)
-		util.AssertEqual(h.element(i), iter.key(), "element equals to key", t)
-		iter.prev()
+		util.AssertEqual(testKeys.element(i), iter.key(), "element equals to key", t)
+		//fmt.Println(testKeys.element(i), iter.key())
+		iter.next()
 	}
 	util.AssertFalse(iter.valid(), "iter is not valid", t)
 }
@@ -202,7 +207,6 @@ func newState() *state {
 
 type concurrentTest struct {
 	current *state
-	arena   *util.Arena
 	list    *skipList
 }
 
@@ -266,9 +270,8 @@ func (ct *concurrentTest) readStep(rnd *util.Random, t *testing.T) {
 func newConcurrentTest() *concurrentTest {
 	t := &concurrentTest{
 		current: newState(),
-		arena:   util.NewArena(),
 	}
-	t.list = newSkipList(compare, t.arena)
+	t.list = newSkipList(compare)
 	return t
 }
 
