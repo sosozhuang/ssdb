@@ -17,6 +17,15 @@ func (n *cleanUpNode) run() {
 	n.function(n.arg1, n.arg2)
 }
 
+func (n *cleanUpNode) finalize() {
+	if f, ok := n.arg1.(ssdb.Finalizer); ok {
+		f.Finalize()
+	}
+	if f, ok := n.arg2.(ssdb.Finalizer); ok {
+		f.Finalize()
+	}
+}
+
 type CleanUpIterator struct {
 	cleanUpHead cleanUpNode
 }
@@ -38,12 +47,14 @@ func (i *CleanUpIterator) RegisterCleanUp(function ssdb.CleanUpFunction, arg1, a
 	node.arg2 = arg2
 }
 
-func (i *CleanUpIterator) finalize() {
-	//todo: run this method when finalized
+func (i *CleanUpIterator) Finalize() {
 	if !i.cleanUpHead.isEmpty() {
 		i.cleanUpHead.run()
-		for node := i.cleanUpHead.next; node != nil; node = node.next {
+		for node := i.cleanUpHead.next; node != nil; {
 			node.run()
+			nextNode := node.next
+			node.finalize()
+			node = nextNode
 		}
 	}
 }
@@ -53,7 +64,7 @@ type emptyIterator struct {
 	status error
 }
 
-func (_ *emptyIterator) IsValid() bool {
+func (_ *emptyIterator) Valid() bool {
 	return false
 }
 
@@ -74,15 +85,15 @@ func (_ *emptyIterator) Prev() {
 	panic("empty iterator")
 }
 
-func (_ *emptyIterator) GetKey() []byte {
+func (_ *emptyIterator) Key() []byte {
 	panic("empty iterator")
 }
 
-func (_ *emptyIterator) GetValue() []byte {
+func (_ *emptyIterator) Value() []byte {
 	panic("empty iterator")
 }
 
-func (i *emptyIterator) GetStatus() error {
+func (i *emptyIterator) Status() error {
 	return i.status
 }
 

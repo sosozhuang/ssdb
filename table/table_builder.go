@@ -7,16 +7,16 @@ import (
 	"ssdb/util"
 )
 
-type tableBuilder struct {
-	rep *tableBuilderRep
+type builder struct {
+	rep *builderRep
 }
 
-func newTableBuilder(options *ssdb.Options, file ssdb.WritableFile) *tableBuilder {
-	b := &tableBuilder{rep: newTableBuilderRep(options, file)}
+func NewBuilder(options *ssdb.Options, file ssdb.WritableFile) ssdb.TableBuilder {
+	b := &builder{rep: newBuilderRep(options, file)}
 	if b.rep.filterBlock != nil {
 		b.rep.filterBlock.startBlock(0)
 	}
-	runtime.SetFinalizer(b, func(b *tableBuilder) {
+	runtime.SetFinalizer(b, func(b *builder) {
 		if !b.rep.closed {
 			panic("tableBuilder: rep not closed")
 		}
@@ -24,7 +24,7 @@ func newTableBuilder(options *ssdb.Options, file ssdb.WritableFile) *tableBuilde
 	return b
 }
 
-func (b *tableBuilder) changeOptions(options *ssdb.Options) error {
+func (b *builder) ChangeOptions(options *ssdb.Options) error {
 	if options.Comparator != b.rep.options.Comparator {
 		return util.InvalidArgumentError1("changing comparator while building table")
 	}
@@ -34,7 +34,7 @@ func (b *tableBuilder) changeOptions(options *ssdb.Options) error {
 	return nil
 }
 
-func (b *tableBuilder) add(key, value []byte) {
+func (b *builder) Add(key, value []byte) {
 	r := b.rep
 	if r.closed {
 		panic("tableBuilder: rep closed")
@@ -65,13 +65,13 @@ func (b *tableBuilder) add(key, value []byte) {
 	r.lastKey = key
 	r.numEntries++
 	r.dataBlock.add(key, value)
-	if estimatedBlockSize := r.dataBlock.currentSizeEstimate(); uint(estimatedBlockSize) >= r.options.BlockSize {
-		b.flush()
+	if estimatedBlockSize := r.dataBlock.currentSizeEstimate(); estimatedBlockSize >= r.options.BlockSize {
+		b.Flush()
 	}
 
 }
 
-func (b *tableBuilder) flush() {
+func (b *builder) Flush() {
 	r := b.rep
 	if r.closed {
 		panic("tableBuilder: rep closed")
@@ -96,13 +96,13 @@ func (b *tableBuilder) flush() {
 
 }
 
-func (b *tableBuilder) status() error {
+func (b *builder) Status() error {
 	return b.rep.err
 }
 
-func (b *tableBuilder) finish() error {
+func (b *builder) Finish() error {
 	r := b.rep
-	b.flush()
+	b.Flush()
 	if r.closed {
 		panic("tableBuilder: rep closed")
 	}
@@ -151,7 +151,7 @@ func (b *tableBuilder) finish() error {
 	return r.err
 }
 
-func (b *tableBuilder) abandon() {
+func (b *builder) Abandon() {
 	r := b.rep
 	if r.closed {
 		panic("tableBuilder: rep closed")
@@ -159,19 +159,27 @@ func (b *tableBuilder) abandon() {
 	r.closed = true
 }
 
-func (b *tableBuilder) numEntries() int64 {
+func (b *builder) NumEntries() int64 {
 	return b.rep.numEntries
 }
 
-func (b *tableBuilder) fileSize() uint64 {
+func (b *builder) FileSize() uint64 {
 	return b.rep.offset
 }
 
-func (b *tableBuilder) ok() bool {
-	return b.status() == nil
+func (b *builder) Finalize() {
+	if !b.rep.closed {
+		panic("builder: rep.closed is false")
+	}
+	b.rep.filterBlock = nil
+	b.rep = nil
 }
 
-func (b *tableBuilder) writeBlock(block *blockBuilder, handle *blockHandle) {
+func (b *builder) ok() bool {
+	return b.Status() == nil
+}
+
+func (b *builder) writeBlock(block *blockBuilder, handle *blockHandle) {
 	// File format contains a sequence of blocks where each block has:
 	//    block_data: uint8[n]
 	//    type: uint8
@@ -202,7 +210,7 @@ func (b *tableBuilder) writeBlock(block *blockBuilder, handle *blockHandle) {
 	block.reset()
 }
 
-func (b *tableBuilder) writeRawBlock(blockContents []byte, t ssdb.CompressionType, handle *blockHandle) {
+func (b *builder) writeRawBlock(blockContents []byte, t ssdb.CompressionType, handle *blockHandle) {
 	r := b.rep
 	handle.setOffset(r.offset)
 	handle.setSize(uint64(len(blockContents)))
@@ -222,7 +230,7 @@ func (b *tableBuilder) writeRawBlock(blockContents []byte, t ssdb.CompressionTyp
 	}
 }
 
-type tableBuilderRep struct {
+type builderRep struct {
 	options           *ssdb.Options
 	indexBlockOptions *ssdb.Options
 	file              ssdb.WritableFile
@@ -239,8 +247,8 @@ type tableBuilderRep struct {
 	//compressedOutput  []byte
 }
 
-func newTableBuilderRep(options *ssdb.Options, f ssdb.WritableFile) *tableBuilderRep {
-	r := &tableBuilderRep{
+func newBuilderRep(options *ssdb.Options, f ssdb.WritableFile) *builderRep {
+	r := &builderRep{
 		options:           options,
 		indexBlockOptions: options,
 		file:              f,

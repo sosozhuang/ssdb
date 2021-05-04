@@ -6,7 +6,12 @@ import (
 	"ssdb/util"
 )
 
-type handleResult func(interface{}, []byte, []byte) error
+type HandleResult func(interface{}, []byte, []byte) error
+
+type InternalInterface interface {
+	ssdb.Table
+	InternalGet(options *ssdb.ReadOptions, key []byte, arg interface{}, result HandleResult) error
+}
 
 type table struct {
 	rep *tableRep
@@ -17,15 +22,15 @@ func newTable(rep *tableRep) *table {
 }
 
 func (t *table) NewIterator(options *ssdb.ReadOptions) ssdb.Iterator {
-	return newTwoLevelIterator(t.rep.indexBlock.newIterator(t.rep.options.Comparator), blockReader, t, options)
+	return NewTwoLevelIterator(t.rep.indexBlock.newIterator(t.rep.options.Comparator), blockReader, t, options)
 }
 
 func (t *table) ApproximateOffsetOf(key []byte) (result uint64) {
 	indexIter := t.rep.indexBlock.newIterator(t.rep.options.Comparator)
 	indexIter.Seek(key)
-	if indexIter.IsValid() {
+	if indexIter.Valid() {
 		handle := newBlockHandle()
-		input := indexIter.GetValue()
+		input := indexIter.Value()
 		if err := handle.decodeFrom(&input); err == nil {
 			result = handle.getOffset()
 		} else {
@@ -40,6 +45,7 @@ func (t *table) ApproximateOffsetOf(key []byte) (result uint64) {
 		// right near the end of the file).
 		result = t.rep.metaIndexHandle.getOffset()
 	}
+	indexIter.Finalize()
 	return
 }
 
@@ -60,14 +66,14 @@ func blockReader(i interface{}, options *ssdb.ReadOptions, indexValue []byte) (i
 			copy(key, b[:])
 			util.EncodeFixed64(&b, handle.getOffset())
 			copy(key[8:], b[:])
-			cacheHandle = blockCache.Lookup(string(key))
+			cacheHandle = blockCache.Lookup(key)
 			if cacheHandle != nil {
 				bb = (blockCache.Value(cacheHandle)).(*block)
 			} else {
 				if contents, err = readBlock(table.rep.file, options, handle); err == nil {
 					bb = newBlock(contents)
 					if contents.cachable && options.FillCache {
-						cacheHandle = blockCache.Insert(string(key), bb, int(bb.getSize()), deleteCachedBlock)
+						cacheHandle = blockCache.Insert(key, bb, int(bb.getSize()), deleteCachedBlock)
 					}
 				}
 			}
@@ -91,28 +97,28 @@ func blockReader(i interface{}, options *ssdb.ReadOptions, indexValue []byte) (i
 	return
 }
 
-func (t *table) internalGet(options *ssdb.ReadOptions, key []byte, arg interface{}, result handleResult) (err error) {
+func (t *table) InternalGet(options *ssdb.ReadOptions, key []byte, arg interface{}, result HandleResult) (err error) {
 	iiter := t.rep.indexBlock.newIterator(t.rep.options.Comparator)
 	iiter.Seek(key)
-	if iiter.IsValid() {
-		handleValue := iiter.GetValue()
+	if iiter.Valid() {
+		handleValue := iiter.Value()
 		filter := t.rep.filter
 		handle := newBlockHandle()
 		if filter != nil && handle.decodeFrom(&handleValue) == nil && !filter.keyMayMatch(handle.getOffset(), key) {
 		} else {
-			blockIter := blockReader(t, options, iiter.GetValue())
+			blockIter := blockReader(t, options, iiter.Value())
 			blockIter.Seek(key)
-			if blockIter.IsValid() {
-				_ = result(arg, blockIter.GetKey(), blockIter.GetValue())
-				err = blockIter.GetStatus()
-				blockIter = nil
+			if blockIter.Valid() {
+				_ = result(arg, blockIter.Key(), blockIter.Value())
+				err = blockIter.Status()
+				blockIter.Finalize()
 			}
 		}
 	}
 	if err == nil {
-		err = iiter.GetStatus()
+		err = iiter.Status()
 	}
-	iiter = nil
+	iiter.Finalize()
 	return
 }
 
@@ -133,11 +139,11 @@ func (t *table) readMeta(footer *footer) {
 	iter := meta.newIterator(ssdb.BytewiseComparator)
 	key := []byte("filter." + t.rep.options.FilterPolicy.Name())
 	iter.Seek(key)
-	if iter.IsValid() && bytes.Compare(iter.GetKey(), key) == 0 {
-		t.readFilter(iter.GetValue())
+	if iter.Valid() && bytes.Compare(iter.Key(), key) == 0 {
+		t.readFilter(iter.Value())
 	}
-	iter = nil
-	meta = nil
+	iter.Finalize()
+	meta.finalize()
 }
 
 func (t *table) readFilter(filterHandleValue []byte) {
@@ -162,11 +168,15 @@ func (t *table) readFilter(filterHandleValue []byte) {
 	t.rep.filter = newFilterBlockReader(t.rep.options.FilterPolicy, block.data)
 }
 
+func (t *table) Finalize() {
+	t.rep.finalize()
+}
+
 func deleteBlock(arg, ignored interface{}) {
 	arg.(*block).finalize()
 }
 
-func deleteCachedBlock(key string, value interface{}) {
+func deleteCachedBlock(key []byte, value interface{}) {
 	value.(*block).finalize()
 }
 
@@ -176,7 +186,7 @@ func releaseBlock(arg, h interface{}) {
 	cache.Release(handle)
 }
 
-func Open(options *ssdb.Options, file ssdb.RandomAccessFile, size uint64) (table *table, err error) {
+func Open(options *ssdb.Options, file ssdb.RandomAccessFile, size uint64) (table ssdb.Table, err error) {
 	if size < footerEncodedLength {
 		err = util.CorruptionError1("file is too short to be an sstable")
 		return
@@ -204,16 +214,16 @@ func Open(options *ssdb.Options, file ssdb.RandomAccessFile, size uint64) (table
 		rep.metaIndexHandle = footer.getMetaIndexHandle()
 		rep.indexBlock = indexBlock
 		if options.BlockCache != nil {
-			rep.cacheID = options.BlockCache.NewID()
+			rep.cacheID = options.BlockCache.NewId()
 		} else {
 			rep.cacheID = 0
 		}
 		rep.filterData = nil
 		rep.filter = nil
-		table = newTable(rep)
-		table.readMeta(footer)
+		t := newTable(rep)
+		t.readMeta(footer)
+		table = t
 	}
-
 	return
 }
 
@@ -226,4 +236,10 @@ type tableRep struct {
 	filterData      []byte
 	metaIndexHandle *blockHandle
 	indexBlock      *block
+}
+
+func (r *tableRep) finalize() {
+	r.filter = nil
+	r.filterData = nil
+	r.indexBlock.finalize()
 }

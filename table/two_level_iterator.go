@@ -18,7 +18,7 @@ type twoLevelIterator struct {
 	dataBlockHandle []byte
 }
 
-func newTwoLevelIterator(indexIter ssdb.Iterator, blockFunction BlockFunction, arg interface{}, options *ssdb.ReadOptions) *twoLevelIterator {
+func NewTwoLevelIterator(indexIter ssdb.Iterator, blockFunction BlockFunction, arg interface{}, options *ssdb.ReadOptions) *twoLevelIterator {
 	return &twoLevelIterator{
 		blockFunction: blockFunction,
 		arg:           arg,
@@ -28,8 +28,8 @@ func newTwoLevelIterator(indexIter ssdb.Iterator, blockFunction BlockFunction, a
 	}
 }
 
-func (i *twoLevelIterator) IsValid() bool {
-	return i.dataIter.isValid()
+func (i *twoLevelIterator) Valid() bool {
+	return i.dataIter.valid
 }
 
 func (i *twoLevelIterator) SeekToFirst() {
@@ -60,7 +60,7 @@ func (i *twoLevelIterator) Seek(target []byte) {
 }
 
 func (i *twoLevelIterator) Next() {
-	if !i.IsValid() {
+	if !i.Valid() {
 		panic("twoLevelIterator: not valid")
 	}
 	i.dataIter.next()
@@ -68,32 +68,32 @@ func (i *twoLevelIterator) Next() {
 }
 
 func (i *twoLevelIterator) Prev() {
-	if !i.IsValid() {
+	if !i.Valid() {
 		panic("twoLevelIterator: not valid")
 	}
 	i.dataIter.prev()
 	i.skipEmptyDataBlocksBackward()
 }
 
-func (i *twoLevelIterator) GetKey() []byte {
-	if !i.IsValid() {
+func (i *twoLevelIterator) Key() []byte {
+	if !i.Valid() {
 		panic("twoLevelIterator: not valid")
 	}
 	return i.dataIter.getKey()
 }
 
-func (i *twoLevelIterator) GetValue() []byte {
-	if !i.IsValid() {
+func (i *twoLevelIterator) Value() []byte {
+	if !i.Valid() {
 		panic("twoLevelIterator: not valid")
 	}
 	return i.dataIter.getValue()
 }
 
-func (i *twoLevelIterator) GetStatus() error {
-	if i.indexIter.getStatus() != nil {
-		return i.indexIter.getStatus()
-	} else if i.dataIter.iterator() != nil && i.dataIter.iterator().GetStatus() != nil {
-		return i.dataIter.getStatus()
+func (i *twoLevelIterator) Status() error {
+	if i.indexIter.status() != nil {
+		return i.indexIter.status()
+	} else if i.dataIter.iterator() != nil && i.dataIter.iterator().Status() != nil {
+		return i.dataIter.status()
 	}
 	return i.err
 }
@@ -105,8 +105,8 @@ func (i *twoLevelIterator) saveError(err error) {
 }
 
 func (i *twoLevelIterator) skipEmptyDataBlocksForward() {
-	for i.dataIter.iterator() == nil || !i.dataIter.isValid() {
-		if !i.indexIter.isValid() {
+	for i.dataIter.iterator() == nil || !i.dataIter.valid {
+		if !i.indexIter.valid {
 			i.setDataIterator(nil)
 			return
 		}
@@ -119,8 +119,8 @@ func (i *twoLevelIterator) skipEmptyDataBlocksForward() {
 }
 
 func (i *twoLevelIterator) skipEmptyDataBlocksBackward() {
-	for i.dataIter.iterator() == nil || !i.dataIter.isValid() {
-		if !i.indexIter.isValid() {
+	for i.dataIter.iterator() == nil || !i.dataIter.valid {
+		if !i.indexIter.valid {
 			i.setDataIterator(nil)
 			return
 		}
@@ -134,13 +134,13 @@ func (i *twoLevelIterator) skipEmptyDataBlocksBackward() {
 
 func (i *twoLevelIterator) setDataIterator(dataIter ssdb.Iterator) {
 	if i.dataIter.iterator() != nil {
-		i.saveError(i.dataIter.getStatus())
+		i.saveError(i.dataIter.status())
 	}
 	i.dataIter.set(dataIter)
 }
 
 func (i *twoLevelIterator) initDataBlock() {
-	if !i.indexIter.isValid() {
+	if !i.indexIter.valid {
 		i.setDataIterator(nil)
 	} else {
 		handle := i.indexIter.getValue()

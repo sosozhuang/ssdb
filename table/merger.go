@@ -2,7 +2,7 @@ package table
 
 import "ssdb"
 
-func newMergingIterator(comparator ssdb.Comparator, children []ssdb.Iterator) ssdb.Iterator {
+func NewMergingIterator(comparator ssdb.Comparator, children []ssdb.Iterator) ssdb.Iterator {
 	i := &mergingIterator{
 		comparator: comparator,
 		children:   make([]*iteratorWrapper, len(children)),
@@ -30,7 +30,7 @@ type mergingIterator struct {
 	direction  direction
 }
 
-func (iter *mergingIterator) IsValid() bool {
+func (iter *mergingIterator) Valid() bool {
 	return iter.current != nil
 }
 
@@ -59,14 +59,14 @@ func (iter *mergingIterator) Seek(target []byte) {
 }
 
 func (iter *mergingIterator) Next() {
-	if !iter.IsValid() {
+	if !iter.Valid() {
 		panic("mergingIterator: not valid")
 	}
 	if iter.direction != forward {
 		for _, child := range iter.children {
 			if child != iter.current {
-				child.seek(iter.GetKey())
-				if child.isValid() && iter.comparator.Compare(iter.GetKey(), child.getKey()) == 0 {
+				child.seek(iter.Key())
+				if child.valid && iter.comparator.Compare(iter.Key(), child.getKey()) == 0 {
 					child.next()
 				}
 			}
@@ -78,14 +78,14 @@ func (iter *mergingIterator) Next() {
 }
 
 func (iter *mergingIterator) Prev() {
-	if !iter.IsValid() {
+	if !iter.Valid() {
 		panic("mergingIterator: not valid")
 	}
 	if iter.direction != reverse {
 		for _, child := range iter.children {
 			if child != iter.current {
-				child.seek(iter.GetKey())
-				if child.isValid() {
+				child.seek(iter.Key())
+				if child.valid {
 					child.prev()
 				} else {
 					child.seekToLast()
@@ -98,33 +98,40 @@ func (iter *mergingIterator) Prev() {
 	iter.findLargest()
 }
 
-func (iter *mergingIterator) GetKey() []byte {
-	if !iter.IsValid() {
+func (iter *mergingIterator) Key() []byte {
+	if !iter.Valid() {
 		panic("mergingIterator: not valid")
 	}
 	return iter.current.getKey()
 }
 
-func (iter *mergingIterator) GetValue() []byte {
-	if !iter.IsValid() {
+func (iter *mergingIterator) Value() []byte {
+	if !iter.Valid() {
 		panic("mergingIterator: not valid")
 	}
 	return iter.current.getValue()
 }
 
-func (iter *mergingIterator) GetStatus() (err error) {
+func (iter *mergingIterator) Status() (err error) {
 	for _, child := range iter.children {
-		if err = child.getStatus(); err != nil {
+		if err = child.status(); err != nil {
 			break
 		}
 	}
 	return
 }
 
+func (iter *mergingIterator) Finalize() {
+	for _, child := range iter.children {
+		child.finalize()
+	}
+	iter.CleanUpIterator.Finalize()
+}
+
 func (iter *mergingIterator) findSmallest() {
 	var smallest *iteratorWrapper
 	for _, child := range iter.children {
-		if child.isValid() {
+		if child.valid {
 			if smallest == nil {
 				smallest = child
 			} else if iter.comparator.Compare(child.getKey(), smallest.getKey()) < 0 {
@@ -138,7 +145,7 @@ func (iter *mergingIterator) findSmallest() {
 func (iter *mergingIterator) findLargest() {
 	var largest *iteratorWrapper
 	for _, child := range iter.children {
-		if child.isValid() {
+		if child.valid {
 			if largest == nil {
 				largest = child
 			} else if iter.comparator.Compare(child.getKey(), largest.getKey()) > 0 {

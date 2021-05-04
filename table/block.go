@@ -102,7 +102,7 @@ func decodeEntry(data []byte) (shared uint32, nonShared uint32, valueLength uint
 }
 
 type blockIterator struct {
-	DefaultIterator
+	CleanUpIterator
 	comparator   ssdb.Comparator
 	data         []byte
 	restarts     uint32
@@ -150,7 +150,7 @@ func (i *blockIterator) seekToRestartPoint(index uint32) {
 	i.value = i.data[offset:offset]
 }
 
-func (i *blockIterator) IsValid() bool {
+func (i *blockIterator) Valid() bool {
 	return i.current < i.restarts
 }
 
@@ -201,14 +201,14 @@ func (i *blockIterator) Seek(target []byte) {
 }
 
 func (i *blockIterator) Next() {
-	if !i.IsValid() {
+	if !i.Valid() {
 		panic("blockIterator: not valid")
 	}
 	i.parseNextKey()
 }
 
 func (i *blockIterator) Prev() {
-	if !i.IsValid() {
+	if !i.Valid() {
 		panic("blockIterator: not valid")
 	}
 	original := i.current
@@ -226,21 +226,21 @@ func (i *blockIterator) Prev() {
 	}
 }
 
-func (i *blockIterator) GetKey() []byte {
-	if !i.IsValid() {
+func (i *blockIterator) Key() []byte {
+	if !i.Valid() {
 		panic("blockIterator: not valid")
 	}
 	return i.key
 }
 
-func (i *blockIterator) GetValue() []byte {
-	if !i.IsValid() {
+func (i *blockIterator) Value() []byte {
+	if !i.Valid() {
 		panic("blockIterator: not valid")
 	}
 	return i.value
 }
 
-func (i *blockIterator) GetStatus() error {
+func (i *blockIterator) Status() error {
 	return i.err
 }
 

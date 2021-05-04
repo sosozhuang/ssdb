@@ -27,9 +27,6 @@ func (w *iteratorWrapper) set(iter ssdb.Iterator) {
 	}
 }
 
-func (w *iteratorWrapper) isValid() bool {
-	return w.valid
-}
 func (w *iteratorWrapper) getKey() []byte {
 	if !w.valid {
 		panic("iteratorWrapper: not valid")
@@ -41,14 +38,14 @@ func (w *iteratorWrapper) getValue() []byte {
 	if !w.valid {
 		panic("iteratorWrapper: not valid")
 	}
-	return w.iter.GetValue()
+	return w.iter.Value()
 }
 
-func (w *iteratorWrapper) getStatus() error {
+func (w *iteratorWrapper) status() error {
 	if !w.valid {
 		panic("iteratorWrapper: not valid")
 	}
-	return w.iter.GetStatus()
+	return w.iter.Status()
 }
 
 func (w *iteratorWrapper) next() {
@@ -92,8 +89,12 @@ func (w *iteratorWrapper) seekToLast() {
 }
 
 func (w *iteratorWrapper) update() {
-	w.valid = w.iter.IsValid()
+	w.valid = w.iter.Valid()
 	if w.valid {
-		w.key = w.iter.GetKey()
+		w.key = w.iter.Key()
 	}
+}
+
+func (w *iteratorWrapper) finalize() {
+	w.iter.Finalize()
 }
