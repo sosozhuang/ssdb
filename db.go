@@ -9,31 +9,19 @@ type Snapshot interface {
 }
 
 type Range struct {
-	start []byte
-	limit []byte
+	Start []byte // Included in the range
+	Limit []byte // Not included in the range
 }
 
 type DB interface {
-	Put(options *WriteOptions, key []byte, value []byte) error
+	Put(options *WriteOptions, key, value []byte) error
 	Delete(options *WriteOptions, key []byte) error
-	Write(options *WriteOptions, updates *WriteBatch) error
+	Write(options *WriteOptions, updates WriteBatch) error
 	Get(options *ReadOptions, key []byte) ([]byte, error)
 	NewIterator(options *ReadOptions) Iterator
 	GetSnapshot() Snapshot
 	ReleaseSnapshot(snapshot Snapshot)
-	GetProperty(property []byte) (string, bool)
-	GetApproximateSizes(r *Range, n int, sizes uint64)
+	GetProperty(property string) (string, bool)
+	GetApproximateSizes(r []Range) []uint64
 	CompactRange(begin, end []byte)
-}
-
-func Open() (DB, error) {
-	return nil, nil
-}
-
-func DestroyDB(name string, options *Options) error {
-	return nil
-}
-
-func RepairDB(name string, options *Options) error {
-	return nil
 }

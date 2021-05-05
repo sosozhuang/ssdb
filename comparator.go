@@ -23,7 +23,7 @@ func (_ bytewiseComparator) Name() string {
 	return "ssdb.BytewiseComparator"
 }
 
-func (b bytewiseComparator) FindShortestSeparator(start *[]byte, limit []byte) {
+func (c bytewiseComparator) FindShortestSeparator(start *[]byte, limit []byte) {
 	minLen := len(*start)
 	if minLen > len(limit) {
 		minLen = len(limit)
@@ -38,8 +38,8 @@ func (b bytewiseComparator) FindShortestSeparator(start *[]byte, limit []byte) {
 		if diffByte < 0xff && diffByte+1 < limit[diffIndex] {
 			(*start)[diffIndex]++
 			*start = (*start)[:diffIndex+1]
-			if b.Compare(*start, limit) >= 0 {
-				panic("start >= limit")
+			if c.Compare(*start, limit) >= 0 {
+				panic("bytewiseComparator: start >= limit")
 			}
 		}
 	}
