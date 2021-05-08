@@ -1,6 +1,7 @@
 package table
 
 import (
+	"bytes"
 	"github.com/golang/snappy"
 	"reflect"
 	"ssdb"
@@ -50,7 +51,7 @@ func (h *blockHandle) encodeTo(dst *[]byte) {
 }
 
 func (h *blockHandle) decodeFrom(input *[]byte) error {
-	if util.GetVarInt64(input, &h.offset) && util.GetVarInt64(input, &h.offset) {
+	if util.GetVarInt64(input, &h.offset) && util.GetVarInt64(input, &h.size) {
 		return nil
 	}
 	return util.CorruptionError1("bad block handle")
@@ -83,9 +84,13 @@ func (f *footer) encodeTo(dst *[]byte) {
 	originalSize := len(*dst)
 	f.metaIndexHandle.encodeTo(dst)
 	f.indexHandle.encodeTo(dst)
-	util.PutFixed32(dst, tableMagicNumber&0xffffffff)
-	util.PutFixed32(dst, tableMagicNumber>>32)
-	if len(*dst) != originalSize+maxEncodedLength {
+	if len(*dst) < 2*maxEncodedLength {
+		padding := bytes.Repeat([]byte{'\000'}, 2*maxEncodedLength-len(*dst))
+		*dst = append(*dst, padding...)
+	}
+	util.PutFixed32(dst, uint32(tableMagicNumber&0xffffffff))
+	util.PutFixed32(dst, uint32(tableMagicNumber>>32))
+	if len(*dst) != originalSize+footerEncodedLength {
 		panic("footer: len(*dst) != originalSize + maxEncodedLength")
 	}
 }
@@ -93,7 +98,7 @@ func (f *footer) encodeTo(dst *[]byte) {
 func (f *footer) decodeFrom(input *[]byte) (err error) {
 	magicLo := util.DecodeFixed32((*input)[footerEncodedLength-8:])
 	magicHi := util.DecodeFixed32((*input)[footerEncodedLength-8+4:])
-	magic := uint64(magicHi<<32) | uint64(magicLo)
+	magic := uint64(magicHi)<<32 | uint64(magicLo)
 	if magic != tableMagicNumber {
 		return util.CorruptionError1("not an sstable (bad magic number)")
 	}
@@ -103,11 +108,11 @@ func (f *footer) decodeFrom(input *[]byte) (err error) {
 	if err = f.indexHandle.decodeFrom(input); err != nil {
 		return
 	}
-	*input = (*input)[footerEncodedLength:]
+	//*input = (*input)[footerEncodedLength:]
 	return
 }
 
-const tableMagicNumber = 0xdb4775248b80fb57
+const tableMagicNumber = uint64(0xdb4775248b80fb57)
 const blockTrailerSize = 5
 
 type blockContents struct {
@@ -148,7 +153,7 @@ func readBlock(file ssdb.RandomAccessFile, options *ssdb.ReadOptions, handle *bl
 			result.heapAllocated = false
 			result.cachable = false
 		} else {
-			result.data = nil
+			result.data = buf[:n]
 			result.heapAllocated = true
 			result.cachable = true
 		}

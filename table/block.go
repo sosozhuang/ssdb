@@ -31,11 +31,10 @@ func (b *block) newIterator(comparator ssdb.Comparator) ssdb.Iterator {
 }
 
 func (b *block) numRestarts() uint32 {
-	const n = uint(unsafe.Sizeof(uint32(0)))
-	if b.size < n {
-		panic("block: size < sizeof(uint32)")
+	if b.size < b.uint32Size {
+		panic("block: size < uint32Size")
 	}
-	return util.DecodeFixed32(b.data[b.size-n:])
+	return util.DecodeFixed32(b.data[b.size-b.uint32Size:])
 }
 
 func (b *block) finalize() {

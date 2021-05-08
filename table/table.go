@@ -196,7 +196,10 @@ func Open(options *ssdb.Options, file ssdb.RandomAccessFile, size uint64) (table
 	if footerInput, _, err = file.Read(footerSpace, int64(size-uint64(footerEncodedLength))); err != nil {
 		return
 	}
-	footer := new(footer)
+	footer := &footer{
+		metaIndexHandle: new(blockHandle),
+		indexHandle:     new(blockHandle),
+	}
 	if err = footer.decodeFrom(&footerInput); err != nil {
 		return
 	}
@@ -206,7 +209,7 @@ func Open(options *ssdb.Options, file ssdb.RandomAccessFile, size uint64) (table
 		opt.VerifyChecksums = true
 	}
 	var indexBlockContents *blockContents
-	if indexBlockContents, err = readBlock(file, opt, footer.getIndexHandle()); err != nil {
+	if indexBlockContents, err = readBlock(file, opt, footer.getIndexHandle()); err == nil {
 		indexBlock := newBlock(indexBlockContents)
 		rep := new(tableRep)
 		rep.options = options

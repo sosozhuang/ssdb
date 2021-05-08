@@ -42,48 +42,30 @@ func (w *iteratorWrapper) getValue() []byte {
 }
 
 func (w *iteratorWrapper) status() error {
-	if !w.valid {
-		panic("iteratorWrapper: not valid")
-	}
 	return w.iter.Status()
 }
 
 func (w *iteratorWrapper) next() {
-	if !w.valid {
-		panic("iteratorWrapper: not valid")
-	}
 	w.iter.Next()
 	w.update()
 }
 
 func (w *iteratorWrapper) prev() {
-	if !w.valid {
-		panic("iteratorWrapper: not valid")
-	}
 	w.iter.Prev()
 	w.update()
 }
 
 func (w *iteratorWrapper) seek(k []byte) {
-	if !w.valid {
-		panic("iteratorWrapper: not valid")
-	}
 	w.iter.Seek(k)
 	w.update()
 }
 
 func (w *iteratorWrapper) seekToFirst() {
-	if !w.valid {
-		panic("iteratorWrapper: not valid")
-	}
 	w.iter.SeekToFirst()
 	w.update()
 }
 
 func (w *iteratorWrapper) seekToLast() {
-	if !w.valid {
-		panic("iteratorWrapper: not valid")
-	}
 	w.iter.SeekToLast()
 	w.update()
 }

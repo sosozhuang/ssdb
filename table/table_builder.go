@@ -37,7 +37,7 @@ func (b *builder) ChangeOptions(options *ssdb.Options) error {
 func (b *builder) Add(key, value []byte) {
 	r := b.rep
 	if r.closed {
-		panic("tableBuilder: rep closed")
+		panic("builder: rep closed")
 	}
 	if !b.ok() {
 		return
@@ -117,14 +117,14 @@ func (b *builder) Finish() error {
 	}
 
 	if b.ok() {
-		metaIndexblock := newBlockBuilder(r.options)
+		metaIndexBlock := newBlockBuilder(r.options)
 		if r.filterBlock != nil {
 			key := "filter." + r.options.FilterPolicy.Name()
 			handleEncoding := make([]byte, 0)
 			filterBlockHandle.encodeTo(&handleEncoding)
-			metaIndexblock.add([]byte(key), handleEncoding)
+			metaIndexBlock.add([]byte(key), handleEncoding)
 		}
-		b.writeBlock(metaIndexblock, metaIndexBlockHandle)
+		b.writeBlock(metaIndexBlock, metaIndexBlockHandle)
 	}
 
 	if b.ok() {
@@ -195,11 +195,9 @@ func (b *builder) writeBlock(block *blockBuilder, handle *blockHandle) {
 	case ssdb.NoCompression:
 		blockContents = raw
 	case ssdb.SnappyCompression:
-		if true {
-			//compressed := r.compressedOutput
-			if compressed := snappy.Encode(nil, raw); len(compressed) < len(raw)-len(raw)/8 {
-				blockContents = compressed
-			}
+		//compressed := r.compressedOutput
+		if compressed := snappy.Encode(nil, raw); len(compressed) < len(raw)-len(raw)/8 {
+			blockContents = compressed
 		} else {
 			blockContents = raw
 			t = ssdb.NoCompression
