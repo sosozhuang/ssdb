@@ -64,7 +64,7 @@ func newBlock(contents *blockContents) *block {
 	return b
 }
 
-func decodeEntry(data []byte) (shared uint32, nonShared uint32, valueLength uint32, i int) {
+func decodeEntry(data []byte) (shared uint32, nonShared uint32, valueLength uint32, i int32) {
 	n := len(data)
 	if n < 3 {
 		i = -1
@@ -93,7 +93,7 @@ func decodeEntry(data []byte) (shared uint32, nonShared uint32, valueLength uint
 		}
 	}
 
-	if n-i < int(nonShared+valueLength) {
+	if n-int(i) < int(nonShared+valueLength) {
 		i = -1
 		return
 	}
@@ -172,7 +172,7 @@ func (i *blockIterator) Seek(target []byte) {
 		regionOffset uint32
 		shared       uint32
 		nonShared    uint32
-		index        int
+		index        int32
 	)
 	for left < right {
 		mid = (left + right + 1) / 2
@@ -182,7 +182,8 @@ func (i *blockIterator) Seek(target []byte) {
 			i.corruptionError()
 			return
 		}
-		if i.compare(i.data[index:index+int(nonShared)], target) < 0 {
+		start := regionOffset + uint32(index)
+		if i.compare(i.data[start:start+nonShared], target) < 0 {
 			left = mid
 		} else {
 			right = mid - 1
@@ -259,16 +260,22 @@ func (i *blockIterator) parseNextKey() bool {
 		i.restartIndex = i.numRestarts
 		return false
 	}
-	var shared, nonShared, valueLength uint32
-	var index int
+	var (
+		shared, nonShared, valueLength uint32
+		index                          int32
+	)
 	shared, nonShared, valueLength, index = decodeEntry(i.data[i.current:i.restarts])
 	if index == -1 || len(i.key) < int(shared) {
 		i.corruptionError()
 		return false
 	} else {
-		i.key = i.key[shared:]
-		i.key = append(i.key, i.data[index:index+int(nonShared)]...)
-		i.value = i.data[index+int(nonShared) : index+int(nonShared+valueLength)]
+		i.key = i.key[:shared]
+		start := i.current + uint32(index)
+		stop := start + nonShared
+		i.key = append(i.key, i.data[start:stop]...)
+		start = stop
+		stop = start + valueLength
+		i.value = i.data[start:stop]
 		for i.restartIndex+1 < i.numRestarts && i.getRestartPoint(i.restartIndex+1) < i.current {
 			i.restartIndex++
 		}
