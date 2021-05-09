@@ -124,6 +124,7 @@ func newBlockIterator(comparator ssdb.Comparator, data []byte, restarts uint32, 
 		numRestarts:  numRestarts,
 		current:      restarts,
 		restartIndex: numRestarts,
+		key:          make([]byte, 0),
 	}
 }
 
@@ -143,7 +144,7 @@ func (i *blockIterator) getRestartPoint(index uint32) uint32 {
 }
 
 func (i *blockIterator) seekToRestartPoint(index uint32) {
-	i.key = nil
+	i.key = make([]byte, 0)
 	i.restartIndex = index
 	offset := i.getRestartPoint(index)
 	i.value = i.data[offset:offset]
@@ -260,7 +261,7 @@ func (i *blockIterator) parseNextKey() bool {
 	}
 	var shared, nonShared, valueLength uint32
 	var index int
-	shared, nonShared, valueLength, index = decodeEntry(i.data[i.current : i.current+i.restarts])
+	shared, nonShared, valueLength, index = decodeEntry(i.data[i.current:i.restarts])
 	if index == -1 || len(i.key) < int(shared) {
 		i.corruptionError()
 		return false

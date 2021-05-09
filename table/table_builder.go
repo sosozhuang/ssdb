@@ -256,6 +256,7 @@ func newBuilderRep(options *ssdb.Options, f ssdb.WritableFile) *builderRep {
 		numEntries:        0,
 		closed:            false,
 		pendingIndexEntry: false,
+		pendingHandle:     newBlockHandle(),
 	}
 	if options.FilterPolicy == nil {
 		r.filterBlock = nil
