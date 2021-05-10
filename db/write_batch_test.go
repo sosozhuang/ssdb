@@ -14,20 +14,20 @@ func printContents(b ssdb.WriteBatch, t *testing.T) string {
 
 	var builder strings.Builder
 	bi := b.(writeBatchInternal)
-	err := insertInto(b, sequenceNumber(bi.Sequence()), mem)
+	err := insertInto(b, mem)
 	//err := b.insertInto(mem)
 
 	count := 0
 	iter := mem.newIterator()
 	var ikey parsedInternalKey
-	for iter.SeekToFirst(); iter.IsValid(); iter.Next() {
-		util.AssertTrue(parseInternalKey(iter.GetKey(), &ikey), "parseInternalKey", t)
+	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
+		util.AssertTrue(parseInternalKey(iter.Key(), &ikey), "parseInternalKey", t)
 		switch ikey.valueType {
 		case ssdb.TypeValue:
 			builder.WriteString("Put(")
 			builder.Write(ikey.userKey)
 			builder.WriteString(", ")
-			builder.Write(iter.GetValue())
+			builder.Write(iter.Value())
 			builder.WriteByte(')')
 			count++
 		case ssdb.TypeDeletion:
@@ -49,7 +49,7 @@ func printContents(b ssdb.WriteBatch, t *testing.T) string {
 	return builder.String()
 }
 
-func TestEmpty(t *testing.T) {
+func TestEmptyWriteBatch(t *testing.T) {
 	batch := ssdb.NewWriteBatch()
 	bi := batch.(writeBatchInternal)
 	util.AssertEqual("", printContents(batch, t), "empty content", t)

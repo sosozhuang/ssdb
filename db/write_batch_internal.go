@@ -14,7 +14,8 @@ type writeBatchInternal interface {
 	Append(src ssdb.WriteBatch)
 }
 
-func insertInto(b ssdb.WriteBatch, seq sequenceNumber, mem *MemTable) error {
+func insertInto(b ssdb.WriteBatch, mem *MemTable) error {
+	seq := sequenceNumber(b.(writeBatchInternal).Sequence())
 	return b.Iterate(&memTableInserter{
 		seq: seq,
 		mem: mem,
