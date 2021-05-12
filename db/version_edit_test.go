@@ -11,9 +11,9 @@ func testEncodeDecode(edit *versionEdit, t *testing.T) {
 	edit.encodeTo(&encoded)
 	var parsed versionEdit
 	err := parsed.decodeFrom(encoded)
-	util.TestNotError(err, "decodeFrom", t)
+	util.AssertNotError(err, "decodeFrom", t)
 	parsed.encodeTo(&encoded2)
-	util.TestEqual(encoded, encoded2, "encode decode", t)
+	util.AssertEqual(encoded, encoded2, "encode decode", t)
 }
 
 func TestEncodeDecode(t *testing.T) {
@@ -25,7 +25,7 @@ func TestEncodeDecode(t *testing.T) {
 			*newInternalKey([]byte("foo"), sequenceNumber(big+500+i), ssdb.TypeValue),
 			*newInternalKey([]byte("zoo"), sequenceNumber(big+600+i), ssdb.TypeDeletion))
 		edit.deletedFile(4, big+700+i)
-		edit.setCompactPointer(int(i), *newInternalKey([]byte("x"), sequenceNumber(big+900+i), ssdb.TypeValue))
+		edit.setCompactPointer(int(i), newInternalKey([]byte("x"), sequenceNumber(big+900+i), ssdb.TypeValue))
 	}
 	edit.setComparatorName("foo")
 	edit.setLogNumber(big + 100)

@@ -35,18 +35,18 @@ func newFileMetaData() *fileMetaData {
 }
 
 type intAndUint64 struct {
-	key   int
-	value uint64
+	first  int
+	second uint64
 }
 
 type intAndInternalKey struct {
-	key   int
-	value internalKey
+	first  int
+	second internalKey
 }
 
 type intAndFileMetaData struct {
-	key   int
-	value fileMetaData
+	first  int
+	second fileMetaData
 }
 
 type deletedFileSet map[intAndUint64]struct{}
@@ -57,7 +57,7 @@ func (s deletedFileSlice) Len() int {
 }
 
 func (s deletedFileSlice) Less(i, j int) bool {
-	return s[i].key < s[j].key || (s[i].key == s[j].key && s[i].value < s[j].value)
+	return s[i].first < s[j].first || (s[i].first == s[j].first && s[i].second < s[j].second)
 }
 
 func (s deletedFileSlice) Swap(i, j int) {
@@ -127,8 +127,8 @@ func (e *versionEdit) setLastSequence(seq sequenceNumber) {
 	e.lastSequence = seq
 }
 
-func (e *versionEdit) setCompactPointer(level int, key internalKey) {
-	e.compactPointers = append(e.compactPointers, intAndInternalKey{level, key})
+func (e *versionEdit) setCompactPointer(level int, key *internalKey) {
+	e.compactPointers = append(e.compactPointers, intAndInternalKey{level, *key})
 }
 
 // Add the specified file at the specified number.
@@ -170,8 +170,8 @@ func (e *versionEdit) encodeTo(dst *[]byte) {
 	}
 	for _, p := range e.compactPointers {
 		util.PutVarInt32(dst, tagCompactPointer)
-		util.PutVarInt32(dst, uint32(p.key))
-		util.PutLengthPrefixedSlice(dst, p.value.encode())
+		util.PutVarInt32(dst, uint32(p.first))
+		util.PutLengthPrefixedSlice(dst, p.second.encode())
 	}
 
 	files := make(deletedFileSlice, 0, len(e.deletedFiles))
@@ -181,13 +181,13 @@ func (e *versionEdit) encodeTo(dst *[]byte) {
 	sort.Sort(files)
 	for _, f := range files {
 		util.PutVarInt32(dst, tagDeletedFile)
-		util.PutVarInt32(dst, uint32(f.key))
-		util.PutVarInt64(dst, f.value)
+		util.PutVarInt32(dst, uint32(f.first))
+		util.PutVarInt64(dst, f.second)
 	}
 	for _, file := range e.newFiles {
-		f := file.value
+		f := file.second
 		util.PutVarInt32(dst, tagNewFile)
-		util.PutVarInt32(dst, uint32(file.key))
+		util.PutVarInt32(dst, uint32(file.first))
 		util.PutVarInt64(dst, f.number)
 		util.PutVarInt64(dst, f.fileSize)
 		util.PutLengthPrefixedSlice(dst, f.smallest.encode())
@@ -317,20 +317,20 @@ func (e *versionEdit) debugString() string {
 	}
 	for _, p := range e.compactPointers {
 		builder.WriteString("\n  CompactPointer: ")
-		util.AppendNumberTo(&builder, uint64(p.key))
+		util.AppendNumberTo(&builder, uint64(p.first))
 		builder.WriteByte(' ')
-		builder.WriteString(p.value.debugString())
+		builder.WriteString(p.second.debugString())
 	}
 	for k := range e.deletedFiles {
 		builder.WriteString("\n  DeleteFile: ")
-		util.AppendNumberTo(&builder, uint64(k.key))
+		util.AppendNumberTo(&builder, uint64(k.first))
 		builder.WriteByte(' ')
-		util.AppendNumberTo(&builder, k.value)
+		util.AppendNumberTo(&builder, k.second)
 	}
 	for _, file := range e.newFiles {
-		f := file.value
+		f := file.second
 		builder.WriteString("\n  AddFile: ")
-		util.AppendNumberTo(&builder, uint64(file.key))
+		util.AppendNumberTo(&builder, uint64(file.first))
 		builder.WriteByte(' ')
 		util.AppendNumberTo(&builder, f.number)
 		builder.WriteByte(' ')
