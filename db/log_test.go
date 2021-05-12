@@ -38,7 +38,7 @@ var initialOffsetRecordSizes = []int{
 	13716,
 	blockSize - headerSize,
 }
-var initialOffsetLastRecordOffsets = []uint{
+var initialOffsetLastRecordOffsets = []uint64{
 	0,
 	headerSize + 10000,
 	2 * (headerSize + 10000),
@@ -65,6 +65,7 @@ func newLogTest(t *testing.T) *logTest {
 		source:  newLogStringSource(),
 		report:  newReportCollector(),
 		reading: false,
+		t:       t,
 	}
 	test.writer = newLogWriter(test.dest)
 	test.reader = newLogReader(test.source, test.report, true, 0)
@@ -128,15 +129,15 @@ func (t *logTest) droppedBytes() int {
 	return t.report.droppedBytes
 }
 
-func (t *logTest) reportMessage() []byte {
-	return t.report.message
+func (t *logTest) reportMessage() string {
+	return string(t.report.message)
 }
 
 func (t *logTest) matchError(msg string) string {
 	if !bytes.Contains(t.report.message, []byte(msg)) {
 		return string(t.report.message)
 	} else {
-		return "ok"
+		return "OK"
 	}
 }
 
@@ -172,7 +173,7 @@ func (t *logTest) checkInitialOffsetRecord(initialOffset uint64, expectedRecordO
 		util.AssertTrue(ok, "readRecord", t.t)
 		util.AssertEqual(initialOffsetRecordSizes[expectedRecordOffset], len(record), "length of record", t.t)
 		util.AssertEqual(initialOffsetLastRecordOffsets[expectedRecordOffset], offsetReader.lastRecordOffset, "lastRecordOffset", t.t)
-		util.AssertEqual('a'+expectedRecordOffset, record[0], "record[0]", t.t)
+		util.AssertEqual(byte('a'+expectedRecordOffset), record[0], "record[0]", t.t)
 	}
 }
 
@@ -523,8 +524,8 @@ func TestErrorJoinsRecords(t *testing.T) {
 	util.AssertEqual("correct", test.read(), "read", t)
 	util.AssertEqual("EOF", test.read(), "read", t)
 	dropped := test.droppedBytes()
-	util.AssertLessThan(dropped, 2*blockSize+100, "droppedBytes", t)
-	util.AssertGreaterThan(dropped, 2*blockSize, "droppedBytes", t)
+	util.AssertLessThanOrEqual(dropped, 2*blockSize+100, "droppedBytes", t)
+	util.AssertGreaterThanOrEqual(dropped, 2*blockSize, "droppedBytes", t)
 }
 
 func TestReadStart(t *testing.T) {

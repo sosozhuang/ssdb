@@ -154,7 +154,7 @@ func (r *logReader) readPhysicalRecord() (result []byte, rt recordType) {
 					rt = eof
 					return
 				} else if n < blockSize {
-					r.buffer = r.buffer[:n]
+					//r.buffer = r.buffer[:n]
 					r.eof = true
 				}
 				r.endOfBufferOffset += uint64(n)

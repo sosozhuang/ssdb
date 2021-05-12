@@ -59,7 +59,7 @@ func (w *logWriter) addRecord(data []byte) (err error) {
 		} else {
 			rt = middleType
 		}
-		err = w.emitPhysicalRecord(rt, data[start:fragmentLength])
+		err = w.emitPhysicalRecord(rt, data[start:start+fragmentLength])
 		start += fragmentLength
 		left -= fragmentLength
 		begin = false
@@ -96,9 +96,9 @@ func (w *logWriter) emitPhysicalRecord(rt recordType, data []byte) (err error) {
 	return
 }
 
-func initTypeCrc(typeCrc [maxRecordType + 1]uint32) {
+func initTypeCrc(typeCrc *[maxRecordType + 1]uint32) {
 	t := make([]byte, 1)
-	for i := recordType(0); i < maxRecordType; i++ {
+	for i := recordType(0); i <= maxRecordType; i++ {
 		t[0] = byte(i)
 		typeCrc[i] = util.ChecksumValue(t)
 	}
@@ -114,6 +114,6 @@ func newLogWriterWithLength(dest ssdb.WritableFile, length uint64) *logWriter {
 		blockOffset: int(length % uint64(blockSize)),
 		typeCrc:     [maxRecordType + 1]uint32{},
 	}
-	initTypeCrc(w.typeCrc)
+	initTypeCrc(&w.typeCrc)
 	return w
 }
