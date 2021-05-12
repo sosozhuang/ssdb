@@ -34,12 +34,6 @@ func (t *findFileTest) find(key []byte) int {
 
 func (t *findFileTest) overlaps(smallest, largest []byte) bool {
 	cmp := newInternalKeyComparator(ssdb.BytewiseComparator)
-	if smallest == nil {
-		smallest = []byte("")
-	}
-	if largest == nil {
-		largest = []byte("")
-	}
 	return someFileOverlapsRange(cmp, t.disjointSortedFiles, t.files, smallest, largest)
 }
 
