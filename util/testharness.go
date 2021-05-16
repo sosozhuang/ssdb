@@ -98,7 +98,7 @@ func AssertGreaterThan(v1, v2 interface{}, s string, t *testing.T) {
 		b = v1.(float64) > v2.(float64)
 	}
 	if !b {
-		t.Fatalf("Test [%s] failed, expected: [%v] <= [%v].\n", s, v1, v2)
+		t.Fatalf("Test [%s] failed, expected: [%v] > [%v].\n", s, v1, v2)
 	}
 }
 
