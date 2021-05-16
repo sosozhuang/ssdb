@@ -139,6 +139,38 @@ func (w *EnvWrapper) Target() Env {
 	return w.Env
 }
 
+type ErrorEnv struct {
+	EnvWrapper
+	writableFileError     bool
+	numWritableFileErrors int
+}
+
+func NewErrorEnv() *ErrorEnv {
+	return &ErrorEnv{
+		EnvWrapper:            EnvWrapper{Env: DefaultEnv()},
+		writableFileError:     false,
+		numWritableFileErrors: 0,
+	}
+}
+
+func (e *ErrorEnv) NewWritableFile(name string) (result WritableFile, err error) {
+	if e.writableFileError {
+		e.numWritableFileErrors++
+		err = util.IOError1("fake error")
+		return
+	}
+	return e.Target().NewWritableFile(name)
+}
+
+func (e *ErrorEnv) NewAppendableFile(name string) (result WritableFile, err error) {
+	if e.writableFileError {
+		e.numWritableFileErrors++
+		err = util.IOError1("fake error")
+		return
+	}
+	return e.Target().NewAppendableFile(name)
+}
+
 const (
 	writableFileBufferSize = 65536
 )
@@ -293,7 +325,7 @@ func (e *env) GetTestDirectory() (string, error) {
 	result, ok := os.LookupEnv("TEST_TMPDIR")
 	if result == "" || !ok {
 		buf := bytes.NewBufferString("")
-		fmt.Fprintf(buf, "/tmp/leveldbtest-%d", os.Geteuid())
+		fmt.Fprintf(buf, "/tmp/ssdbtest-%d", os.Geteuid())
 		result = buf.String()
 	}
 	// The CreateDir status is ignored because the directory may already exist.
@@ -302,7 +334,7 @@ func (e *env) GetTestDirectory() (string, error) {
 }
 
 func (e *env) NewLogger(name string) (*log.Logger, error) {
-	panic("implement me")
+	return log.New(os.Stdout, "", log.LstdFlags), nil
 }
 
 func (e *env) NowMicros() uint64 {
@@ -351,6 +383,9 @@ func (f *sequentialFile) Read(b []byte) (result []byte, n int, err error) {
 		}
 		result = b[:n]
 		break
+	}
+	if n == 0 && err == io.EOF {
+		err = nil
 	}
 	return
 }
