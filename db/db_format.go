@@ -131,7 +131,7 @@ type internalKey struct {
 }
 
 func (k *internalKey) decodeFrom(b []byte) {
-	k.rep = make([]byte, len(b))
+	k.rep = make([]byte, len(b), len(b))
 	copy(k.rep, b)
 }
 
