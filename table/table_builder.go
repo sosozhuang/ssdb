@@ -2,7 +2,6 @@ package table
 
 import (
 	"github.com/golang/snappy"
-	"runtime"
 	"ssdb"
 	"ssdb/util"
 )
@@ -16,11 +15,6 @@ func NewBuilder(options *ssdb.Options, file ssdb.WritableFile) ssdb.TableBuilder
 	if b.rep.filterBlock != nil {
 		b.rep.filterBlock.startBlock(0)
 	}
-	runtime.SetFinalizer(b, func(b *builder) {
-		if !b.rep.closed {
-			panic("tableBuilder: rep not closed")
-		}
-	})
 	return b
 }
 
