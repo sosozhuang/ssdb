@@ -87,7 +87,7 @@ func (r *repairer) run() error {
 		for _, t := range r.tables {
 			bytes += t.meta.fileSize
 		}
-		ssdb.Log(r.options.InfoLog, "**** Repaired leveldb %s; "+
+		ssdb.Log(r.options.InfoLog, "**** Repaired ssdb %s; "+
 			"recovered %d files; %d bytes. "+
 			"Some data may have been lost. "+
 			"****", r.dbName, len(r.tables), bytes)
