@@ -144,7 +144,7 @@ func (i *dbIter) Finalize() {
 }
 
 func (i *dbIter) findNextUserEntry(skipping bool, skip *[]byte) {
-	if !i.valid {
+	if !i.iter.Valid() {
 		panic("dbIter: not valid")
 	}
 	if i.direction != forward {
@@ -193,9 +193,7 @@ func (i *dbIter) findPrevUserEntry() {
 					i.clearSavedValue()
 				} else {
 					rawValue := i.iter.Value()
-					if cap(i.savedValue) > len(rawValue)+1048576 || len(i.savedValue) < len(rawValue) {
-						i.savedValue = make([]byte, len(rawValue))
-					}
+					i.savedValue = make([]byte, len(rawValue), len(rawValue))
 					saveKey(extractUserKey(i.iter.Key()), &i.savedKey)
 					copy(i.savedValue, rawValue)
 				}
@@ -232,9 +230,7 @@ func (i *dbIter) parseKey(key *parsedInternalKey) bool {
 }
 
 func saveKey(k []byte, dst *[]byte) {
-	if *dst == nil {
-		*dst = make([]byte, len(k))
-	}
+	*dst = make([]byte, len(k))
 	copy(*dst, k)
 }
 

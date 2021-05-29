@@ -50,22 +50,21 @@ func (t *MemTable) add(seq sequenceNumber, vt ssdb.ValueType, key, value []byte)
 	//  value bytes  : char[value.size()]
 	keySize := len(key)
 	valSize := len(value)
-	byteSize := unsafe.Sizeof(byte(0))
 	internalKeySize := uint32(keySize + 8)
 	encodedLen := util.VarIntLength(uint64(internalKeySize)) + int(internalKeySize) + util.VarIntLength(uint64(valSize)) + valSize
 	buf := t.arena.Allocate(uint(encodedLen))
 	pointer := buf
 	//b5 := *(*[5]byte)(pointer)
 	i := util.EncodeVarInt32((*[5]byte)(pointer), internalKeySize)
-	pointer = unsafe.Pointer(uintptr(pointer) + uintptr(i)*byteSize)
+	pointer = unsafe.Pointer(uintptr(pointer) + uintptr(i))
 	copyMemoryToPointer(pointer, key)
-	pointer = unsafe.Pointer(uintptr(pointer) + uintptr(keySize)*byteSize)
+	pointer = unsafe.Pointer(uintptr(pointer) + uintptr(keySize))
 	util.EncodeFixed64((*[8]byte)(pointer), uint64(seq<<8)|uint64(vt))
-	pointer = unsafe.Pointer(uintptr(pointer) + 8*byteSize)
+	pointer = unsafe.Pointer(uintptr(pointer) + 8)
 	i = util.EncodeVarInt32((*[5]byte)(pointer), uint32(valSize))
-	pointer = unsafe.Pointer(uintptr(pointer) + uintptr(i)*byteSize)
+	pointer = unsafe.Pointer(uintptr(pointer) + uintptr(i))
 	copyMemoryToPointer(pointer, value)
-	if uintptr(pointer)+uintptr(valSize)*byteSize != uintptr(buf)+uintptr(encodedLen)*byteSize {
+	if uintptr(pointer)+uintptr(valSize) != uintptr(buf)+uintptr(encodedLen) {
 		panic("memtable: p + valSize != buf + encodedLen")
 	}
 	t.table.insert(buf)
@@ -81,7 +80,7 @@ func copyMemoryToPointer(pointer unsafe.Pointer, src []byte) {
 		}
 		dst = (*[n]byte)(pointer)
 		copy((*dst)[:], src[start:start+limit])
-		pointer = unsafe.Pointer(uintptr(pointer) + n*unsafe.Sizeof(byte(0)))
+		pointer = unsafe.Pointer(uintptr(pointer) + n)
 		size -= n
 	}
 }
@@ -123,6 +122,7 @@ func NewMemTable(comparator *internalKeyComparator) *MemTable {
 	t := &MemTable{
 		comparator: &keyComparator{comparator},
 		refs:       0,
+		arena:      util.NewArena(),
 	}
 	t.table = newSkipList(t.comparator.compare)
 	return t
@@ -141,7 +141,7 @@ func copyMemoryToSlice(dst *[]byte, pointer unsafe.Pointer, l int) {
 		}
 		src = (*[n]byte)(pointer)
 		copy((*dst)[start:start+limit], src[:limit])
-		pointer = unsafe.Pointer(uintptr(pointer) + n*unsafe.Sizeof(byte(0)))
+		pointer = unsafe.Pointer(uintptr(pointer) + n)
 		l -= n
 	}
 }
@@ -188,7 +188,8 @@ func (i *memTableIterator) SeekToLast() {
 }
 
 func (i *memTableIterator) Seek(target []byte) {
-	i.iter.seek(encodeKey(&i.tmp, target))
+	x := encodeKey(&i.tmp, target)
+	i.iter.seek(unsafe.Pointer(&x[0]))
 }
 
 func (i *memTableIterator) Next() {
@@ -206,7 +207,7 @@ func (i *memTableIterator) Key() []byte {
 func (i *memTableIterator) Value() []byte {
 	pointer := i.iter.key().(unsafe.Pointer)
 	key := getLengthPrefixedSlice(pointer)
-	pointer = unsafe.Pointer(uintptr(pointer) + uintptr(util.VarIntLength(uint64(len(key)))) + uintptr(len(key))*unsafe.Sizeof(byte(0)))
+	pointer = unsafe.Pointer(uintptr(pointer) + uintptr(util.VarIntLength(uint64(len(key)))) + uintptr(len(key)))
 	return getLengthPrefixedSlice(pointer)
 }
 

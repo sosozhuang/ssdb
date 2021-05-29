@@ -34,11 +34,11 @@ func (c *tableCache) newIterator(options *ssdb.ReadOptions, fileNumber, fileSize
 		iter = table.NewErrorIterator(err)
 		return
 	}
-	table := c.cache.Value(handle).(tableAndFile).table
-	iter = table.NewIterator(options)
+	t := c.cache.Value(handle).(*tableAndFile).table
+	iter = t.NewIterator(options)
 	iter.RegisterCleanUp(unrefEntry, c.cache, handle)
 	if tablePtr != nil {
-		*tablePtr = table
+		*tablePtr = t
 	}
 	return
 }

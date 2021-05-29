@@ -3,7 +3,7 @@ package db
 import (
 	"bytes"
 	"fmt"
-	"runtime"
+	"os"
 	"sort"
 	"ssdb"
 	"ssdb/table"
@@ -65,6 +65,9 @@ func newVersion(vset *versionSet) *version {
 		fileToCompactLevel: -1,
 		compactionScore:    -1,
 		compactionLevel:    -1,
+	}
+	for i := range v.files {
+		v.files[i] = make([]*fileMetaData, 0)
 	}
 	v.next = v
 	v.prev = v
@@ -289,8 +292,8 @@ func (v *version) ref() {
 }
 
 func (v *version) unref() {
-	if v == &v.vset.dummyVersions {
-		panic("version: v == &v.vset.dummyVersions")
+	if v == v.vset.dummyVersions {
+		panic("version: v == v.vset.dummyVersions")
 	}
 	if v.refs < 1 {
 		panic("version: refs < 1")
@@ -549,7 +552,7 @@ func (i *levelFileNumIterator) Value() []byte {
 		panic("levelFileNumIterator: not valid")
 	}
 	util.EncodeFixed64((*[8]byte)(unsafe.Pointer(&i.valueBuf)), i.flist[i.index].number)
-	util.EncodeFixed64((*[8]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(&i.valueBuf))+8*unsafe.Sizeof(byte(0)))), i.flist[i.index].fileSize)
+	util.EncodeFixed64((*[8]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(&i.valueBuf))+8)), i.flist[i.index].fileSize)
 	return i.valueBuf[:]
 }
 
@@ -584,7 +587,7 @@ type versionSet struct {
 	prevLogNumber      uint64
 	descriptorFile     ssdb.WritableFile
 	descriptorLog      *logWriter
-	dummyVersions      version
+	dummyVersions      *version
 	current            *version
 	compactPointer     [numLevels][]byte
 }
@@ -606,20 +609,17 @@ func newVersionSet(dbName string, options *ssdb.Options, tableCache *tableCache,
 		current:            nil,
 		compactPointer:     [numLevels][]byte{},
 	}
-	s.dummyVersions = *newVersion(s)
+	s.dummyVersions = newVersion(s)
 	s.appendVersion(newVersion(s))
-	runtime.SetFinalizer(s, func(s *versionSet) {
-
-	})
 	return s
 }
 
 func (s *versionSet) finalize() {
 	s.current.unref()
-	if s.dummyVersions.next != &s.dummyVersions {
-		panic("versionSet: dummyVersions.next != &dummyVersions")
+	if s.dummyVersions.next != s.dummyVersions {
+		//panic("versionSet: dummyVersions.next != &dummyVersions")
 	}
-	s.descriptorLog = nil
+	s.descriptorLog.dest.Finalize()
 	s.descriptorFile.Finalize()
 }
 
@@ -636,7 +636,7 @@ func (s *versionSet) appendVersion(v *version) {
 	s.current = v
 	v.ref()
 	v.prev = s.dummyVersions.prev
-	v.next = &s.dummyVersions
+	v.next = s.dummyVersions
 	v.prev.next = v
 	v.next.prev = v
 }
@@ -656,12 +656,13 @@ func (s *versionSet) logAndApply(edit *versionEdit, mu *sync.Mutex) (err error) 
 		edit.setPrevLogNumber(s.prevLogNumber)
 	}
 	edit.setNextFile(s.nextFileNumber)
-	edit.setLastSequence(sequenceNumber(s.lastSequence))
+	edit.setLastSequence(s.lastSequence)
 
 	v := newVersion(s)
 	builder := newVersionSetBuilder(s, s.current)
 	builder.apply(edit)
 	builder.saveTo(v)
+	builder.finalize()
 	s.finalizeVersion(v)
 
 	var newManifestFile string
@@ -677,7 +678,7 @@ func (s *versionSet) logAndApply(edit *versionEdit, mu *sync.Mutex) (err error) 
 		}
 	}
 
-	mu.Lock()
+	mu.Unlock()
 	if err == nil {
 		record := make([]byte, 0)
 		edit.encodeTo(&record)
@@ -691,7 +692,7 @@ func (s *versionSet) logAndApply(edit *versionEdit, mu *sync.Mutex) (err error) 
 	if err == nil && len(newManifestFile) != 0 {
 		err = setCurrentFile(s.env, s.dbName, s.manifestFileNumber)
 	}
-	mu.Unlock()
+	mu.Lock()
 
 	if err == nil {
 		s.appendVersion(v)
@@ -700,6 +701,7 @@ func (s *versionSet) logAndApply(edit *versionEdit, mu *sync.Mutex) (err error) 
 	} else {
 		v.finalize()
 		if len(newManifestFile) != 0 {
+			s.descriptorLog.dest.Finalize()
 			s.descriptorFile.Finalize()
 			s.descriptorLog = nil
 			s.descriptorFile = nil
@@ -724,7 +726,7 @@ func (s *versionSet) recover() (saveManifest bool, err error) {
 	if current, err = ssdb.ReadFileToString(s.env, currentFileName(s.dbName)); err != nil {
 		return
 	}
-	if len(current) == 0 || current[len(current)-1] == '\n' {
+	if len(current) == 0 || current[len(current)-1] != '\n' {
 		err = util.CorruptionError1("CURRENT file does not end with newline")
 		return
 	}
@@ -750,10 +752,8 @@ func (s *versionSet) recover() (saveManifest bool, err error) {
 
 	reporter := versionSetLogReporter{err: err}
 	reader := newLogReader(file, &reporter, true, 0)
-	var (
-		record []byte
-		ok     bool
-	)
+	var record []byte
+	ok := true
 	for ok && err == nil {
 		record, ok = reader.readRecord()
 		edit := newVersionEdit()
@@ -954,7 +954,7 @@ func (s *versionSet) approximateOffsetOf(v *version, ikey *internalKey) (result 
 }
 
 func (s *versionSet) addLiveFiles(live map[uint64]struct{}) {
-	for v := s.dummyVersions.next; v != &s.dummyVersions; v = v.next {
+	for v := s.dummyVersions.next; v != s.dummyVersions; v = v.next {
 		for level := 0; level < numLevels; level++ {
 			files := v.files[level]
 			for _, f := range files {
@@ -1280,11 +1280,40 @@ func (k *bySmallestKey) less(f1, f2 *fileMetaData) bool {
 	}
 }
 
-type fileSet map[*fileMetaData]struct{}
+type fileSet struct {
+	m   map[*fileMetaData]struct{}
+	cmp bySmallestKey
+	s   []*fileMetaData
+}
+
+func (s *fileSet) insert(f *fileMetaData) {
+	s.m[f] = struct{}{}
+}
+
+func (s *fileSet) Len() int {
+	return len(s.m)
+}
+
+func (s *fileSet) Less(i, j int) bool {
+	return s.cmp.less(s.s[i], s.s[j])
+}
+
+func (s *fileSet) Swap(i, j int) {
+	s.s[i], s.s[j] = s.s[j], s.s[i]
+}
+
+func (s *fileSet) sortedSlice() []*fileMetaData {
+	s.s = make([]*fileMetaData, 0, s.Len())
+	for k := range s.m {
+		s.s = append(s.s, k)
+	}
+	sort.Sort(s)
+	return s.s
+}
 
 type levelState struct {
 	deletedFiles map[uint64]struct{}
-	addedFiles   fileSet
+	addedFiles   *fileSet
 }
 
 type versionSetBuilder struct {
@@ -1299,10 +1328,14 @@ func newVersionSetBuilder(vset *versionSet, base *version) *versionSetBuilder {
 		base:   base,
 		levels: [numLevels]levelState{},
 	}
-	b.base.unref()
-	_ = bySmallestKey{internalComparator: vset.icmp}
-	for _, level := range b.levels {
-		level.addedFiles = make(map[*fileMetaData]struct{})
+	b.base.ref()
+	cmp := bySmallestKey{internalComparator: vset.icmp}
+	for level := range b.levels {
+		b.levels[level].deletedFiles = make(map[uint64]struct{})
+		b.levels[level].addedFiles = &fileSet{
+			m:   make(map[*fileMetaData]struct{}),
+			cmp: cmp,
+		}
 	}
 	return b
 }
@@ -1310,8 +1343,8 @@ func newVersionSetBuilder(vset *versionSet, base *version) *versionSetBuilder {
 func (b *versionSetBuilder) finalize() {
 	for level := 0; level < numLevels; level++ {
 		added := b.levels[level].addedFiles
-		toUnref := make([]*fileMetaData, 0, len(added))
-		for k := range added {
+		toUnref := make([]*fileMetaData, 0, added.Len())
+		for k := range added.m {
 			toUnref = append(toUnref, k)
 		}
 		sort.Sort(fileMetaDataSlice(toUnref))
@@ -1370,7 +1403,7 @@ func (b *versionSetBuilder) apply(edit *versionEdit) {
 			f.allowedSeeks = 100
 		}
 		delete(b.levels[level].deletedFiles, f.number)
-		b.levels[level].addedFiles[f] = struct{}{}
+		b.levels[level].addedFiles.insert(f)
 	}
 }
 
@@ -1378,34 +1411,43 @@ func (b *versionSetBuilder) saveTo(v *version) {
 	cmp := bySmallestKey{internalComparator: b.vset.icmp}
 	var (
 		baseFiles []*fileMetaData
-		added     fileSet
+		added     []*fileMetaData
 	)
 	for level := 0; level < numLevels; level++ {
 		baseFiles = b.base.files[level]
 		baseIndex, baseEnd := 0, len(baseFiles)
-		added = b.levels[level].addedFiles
-		tmp := make([]*fileMetaData, 0, len(added))
-		for k := range added {
-			tmp = append(tmp, k)
-		}
-		sort.Sort(fileMetaDataSlice(tmp))
-		for _, f := range tmp {
-			b.maybeAddFile(v, level, f)
-			pos := sort.Search(len(baseFiles[baseIndex:]), func(i int) bool {
+		added = b.levels[level].addedFiles.sortedSlice()
+		for _, f := range added {
+			basePos := sort.Search(len(baseFiles[baseIndex:]), func(i int) bool {
 				return cmp.less(f, baseFiles[baseIndex+i])
 			})
-			for ; baseIndex != pos; baseIndex++ {
+			// Add all smaller files listed in base_
+			for basePos += baseIndex; baseIndex != basePos; baseIndex++ {
 				b.maybeAddFile(v, level, baseFiles[baseIndex])
 			}
+			b.maybeAddFile(v, level, f)
 		}
+		// Add remaining base files
 		for ; baseIndex < baseEnd; baseIndex++ {
 			b.maybeAddFile(v, level, baseFiles[baseIndex])
+		}
+
+		if level > 0 {
+			for i := 1; i < len(v.files[level]); i++ {
+				prevEnd := v.files[level][i-1].largest
+				thisBegin := v.files[level][i].smallest
+				if b.vset.icmp.compare(&prevEnd, &thisBegin) >= 0 {
+					fmt.Fprintf(os.Stderr, "overlapping ranges in same level %s vs. %s\n", prevEnd.debugString(), thisBegin.debugString())
+					os.Exit(1)
+				}
+			}
 		}
 	}
 }
 
 func (b *versionSetBuilder) maybeAddFile(v *version, level int, f *fileMetaData) {
-	if len(b.levels[level].deletedFiles) > 0 {
+	_, ok := b.levels[level].deletedFiles[f.number]
+	if ok {
 	} else {
 		files := v.files[level]
 		if level > 0 && len(files) != 0 {

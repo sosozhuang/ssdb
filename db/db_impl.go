@@ -106,7 +106,7 @@ func sanitizeOptions(dbName string, iCmp *internalKeyComparator, iPolicy *intern
 		result.FilterPolicy = nil
 	}
 	clipToRangeInt(&result.MaxOpenFiles, 64+numNonTableCacheFiles, 50000)
-	clipToRangeInt(&result.WriteBufferSize, 64<<10, 1<<30)
+	//clipToRangeInt(&result.WriteBufferSize, 64<<10, 1<<30)
 	clipToRangeInt(&result.MaxFileSize, 1<<20, 1<<30)
 	clipToRangeInt(&result.BlockSize, 1<<10, 4<<20)
 	if result.InfoLog == nil {
@@ -175,6 +175,7 @@ func newDB(rawOptions *ssdb.Options, dbName string) *db {
 		seed:                          0,
 		writers:                       make([]*writer, 0),
 		tmpBatch:                      ssdb.NewWriteBatch(),
+		pendingOutputs:                make(map[uint64]struct{}),
 		backgroundCompactionScheduled: false,
 		manualCompaction:              nil,
 	}
@@ -190,7 +191,7 @@ func newDB(rawOptions *ssdb.Options, dbName string) *db {
 
 func (d *db) newDB() error {
 	edit := newVersionEdit()
-	edit.setComparatorName("")
+	edit.setComparatorName(d.userComparator().Name())
 	edit.setLogNumber(0)
 	edit.setNextFile(2)
 	edit.setLastSequence(0)
@@ -492,11 +493,11 @@ func (d *db) writeLevel0Table(mem *MemTable, edit *versionEdit, base *version) (
 	iter := mem.newIterator()
 	ssdb.Log(d.options.InfoLog, "Level-0 table #%d: started.\n", meta.number)
 
-	d.mutex.Lock()
-	err = buildTable(d.dbName, d.env, &d.options, d.tableCache, iter, meta)
 	d.mutex.Unlock()
+	err = buildTable(d.dbName, d.env, &d.options, d.tableCache, iter, meta)
+	d.mutex.Lock()
 
-	ssdb.Log(d.options.InfoLog, "Level-0 table #%d: %d bytes %s.\n", meta.number, meta.fileSize, err)
+	ssdb.Log(d.options.InfoLog, "Level-0 table #%d: %d bytes %v.\n", meta.number, meta.fileSize, err)
 	iter = nil
 	delete(d.pendingOutputs, meta.number)
 
@@ -976,7 +977,7 @@ func cleanupIteratorState(arg1, arg2 interface{}) {
 func (d *db) newInternalIterator(options *ssdb.ReadOptions) (internalIter ssdb.Iterator, latestSnapshot sequenceNumber, seed uint32) {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
-	latestSnapshot = sequenceNumber(d.versions.lastSequence)
+	latestSnapshot = d.versions.lastSequence
 	list := make([]ssdb.Iterator, 1)
 	list[0] = d.mem.newIterator()
 	d.mem.ref()
@@ -1118,7 +1119,7 @@ func (d *db) Write(options *ssdb.WriteOptions, updates ssdb.WriteBatch) (err err
 		// during this phase since &w is currently responsible for logging
 		// and protects against concurrent loggers and concurrent writes
 		// into mem_.
-		d.mutex.Lock()
+		d.mutex.Unlock()
 		err = d.log.addRecord(wbi.Contents())
 		syncError := false
 		if err == nil && options.Sync {
@@ -1129,7 +1130,7 @@ func (d *db) Write(options *ssdb.WriteOptions, updates ssdb.WriteBatch) (err err
 		if err == nil {
 			err = insertInto(updates, d.mem)
 		}
-		d.mutex.Unlock()
+		d.mutex.Lock()
 		if syncError {
 			d.recordBackgroundError(err)
 		}
@@ -1266,10 +1267,9 @@ func (d *db) GetProperty(property string) (value string, ok bool) {
 	}
 	in = strings.TrimPrefix(in, prefix)
 	if strings.HasPrefix(in, "num-files-at-level") {
-		strings.TrimPrefix(in, "num-files-at-level")
-		b := []byte(in)
+		in = strings.TrimPrefix(in, "num-files-at-level")
 		var level uint64
-		ok = util.ConsumeDecimalNumber(&b, &level) && len(b) == 0
+		ok = util.ConsumeDecimalNumber(&in, &level) && len(in) == 0
 		if !ok || level >= numLevels {
 			ok = false
 			return

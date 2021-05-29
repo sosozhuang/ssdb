@@ -193,23 +193,26 @@ type constructorInterface interface {
 	newIterator() ssdb.Iterator
 	getData() kvMap
 	db() ssdb.DB
+	finalize()
 }
 
 type constructor struct {
-	data       kvMap
-	finishImpl func(*ssdb.Options, kvMap) error
-	t          *testing.T
+	data         kvMap
+	finishImpl   func(*ssdb.Options, kvMap) error
+	finalizeImpl func()
+	t            *testing.T
 }
 
-func newConstructor(cmp ssdb.Comparator, finishImpl func(*ssdb.Options, kvMap) error, t *testing.T) *constructor {
+func newConstructor(cmp ssdb.Comparator, finishImpl func(*ssdb.Options, kvMap) error, finalizeImpl func(), t *testing.T) *constructor {
 	return &constructor{
 		data: kvMap{
 			m:  make(map[string]string),
 			s:  make([]string, 0),
 			op: newSTLLessThanWithComparator(cmp),
 		},
-		finishImpl: finishImpl,
-		t:          t,
+		finishImpl:   finishImpl,
+		finalizeImpl: finalizeImpl,
+		t:            t,
 	}
 }
 
@@ -228,6 +231,10 @@ func (c *constructor) finish(options *ssdb.Options, keys *[]string, kvMap *kvMap
 
 func (c *constructor) getData() kvMap {
 	return c.data
+}
+
+func (c *constructor) finalize() {
+	c.finalizeImpl()
 }
 
 type keyConvertingIterator struct {
@@ -301,13 +308,21 @@ func newMemTableConstructor(cmp ssdb.Comparator, t *testing.T) *memTableConstruc
 	m := &memTableConstructor{
 		internalComparator: newInternalKeyComparator(cmp),
 	}
-	m.constructor = newConstructor(cmp, m.finishImpl, t)
+	m.constructor = newConstructor(cmp, m.finishImpl, m.finalize, t)
 	m.memtable = NewMemTable(m.internalComparator)
 	m.memtable.ref()
 	return m
 }
 
 func (c *memTableConstructor) finishImpl(options *ssdb.Options, data kvMap) error {
+	c.memtable.unref()
+	c.memtable = NewMemTable(c.internalComparator)
+	c.memtable.ref()
+	seq := sequenceNumber(1)
+	for _, key := range data.s {
+		c.memtable.add(seq, ssdb.TypeValue, []byte(key), []byte(data.m[key]))
+		seq++
+	}
 	return nil
 }
 
@@ -319,6 +334,10 @@ func (c *memTableConstructor) db() ssdb.DB {
 	return nil
 }
 
+func (c *memTableConstructor) finalize() {
+	c.memtable.unref()
+}
+
 type dbConstructor struct {
 	*constructor
 	comparator  ssdb.Comparator
@@ -327,15 +346,15 @@ type dbConstructor struct {
 
 func newDBConstructor(cmp ssdb.Comparator, t *testing.T) constructorInterface {
 	d := &dbConstructor{
-		comparator:  cmp,
-		dbInterface: nil,
+		comparator: cmp,
 	}
-	d.constructor = newConstructor(cmp, d.finishImpl, t)
+	d.constructor = newConstructor(cmp, d.finishImpl, d.finalize, t)
 	d.newDB()
 	return d
 }
 
 func (d *dbConstructor) finishImpl(options *ssdb.Options, data kvMap) error {
+	d.dbInterface.(*db).finalize()
 	d.dbInterface = nil
 	d.newDB()
 	for _, key := range data.s {
@@ -354,6 +373,10 @@ func (d *dbConstructor) db() ssdb.DB {
 	return d.dbInterface
 }
 
+func (d *dbConstructor) finalize() {
+	d.dbInterface.(*db).finalize()
+}
+
 func tmpDir() string {
 	dir, _ := ssdb.DefaultEnv().GetTestDirectory()
 	return dir
@@ -364,13 +387,13 @@ func (d *dbConstructor) newDB() {
 	options := ssdb.NewOptions()
 	options.Comparator = d.comparator
 	err := Destroy(name, options)
-	util.AssertNotError(err, "DestroyDB", d.t)
+	util.AssertNotError(err, "Destroy", d.t)
 
 	options.CreateIfMissing = true
 	options.ErrorIfExists = true
 	options.WriteBufferSize = 10000
 	d.dbInterface, err = Open(options, name)
-	util.AssertNotError(err, "OpenDB", d.t)
+	util.AssertNotError(err, "Open", d.t)
 }
 
 type testType int8
@@ -408,6 +431,9 @@ func newHarness(t *testing.T) *harness {
 }
 
 func (h *harness) init(args *testArgs) {
+	if h.constructor != nil {
+		h.constructor.finalize()
+	}
 	h.constructor = nil
 	h.options = ssdb.NewOptions()
 	h.options.BlockRestartInterval = args.restartInterval
@@ -671,8 +697,8 @@ func TestRandomizedLongDB(t *testing.T) {
 		value string
 		ok    bool
 	)
-	for level := 0; level < 7; level++ {
-		name = fmt.Sprintf("leveldb.num-files-at-level%d", level)
+	for level := 0; level < numLevels; level++ {
+		name = fmt.Sprintf("ssdb.num-files-at-level%d", level)
 		value, ok = h.db().GetProperty(name)
 		util.AssertTrue(ok, "db.GetProperty", t)
 		i, _ := strconv.Atoi(value)
