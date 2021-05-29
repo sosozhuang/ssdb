@@ -2,32 +2,30 @@ package util
 
 import (
 	"math"
-	"reflect"
 	"testing"
-	"unsafe"
 )
 
 func TestNumberToString(t *testing.T) {
-	TestEqual("0", NumberToString(0), "NumberToString", t)
-	TestEqual("1", NumberToString(1), "NumberToString", t)
-	TestEqual("9", NumberToString(9), "NumberToString", t)
+	AssertEqual("0", NumberToString(0), "NumberToString", t)
+	AssertEqual("1", NumberToString(1), "NumberToString", t)
+	AssertEqual("9", NumberToString(9), "NumberToString", t)
 
-	TestEqual("10", NumberToString(10), "NumberToString", t)
-	TestEqual("11", NumberToString(11), "NumberToString", t)
-	TestEqual("19", NumberToString(19), "NumberToString", t)
-	TestEqual("99", NumberToString(99), "NumberToString", t)
+	AssertEqual("10", NumberToString(10), "NumberToString", t)
+	AssertEqual("11", NumberToString(11), "NumberToString", t)
+	AssertEqual("19", NumberToString(19), "NumberToString", t)
+	AssertEqual("99", NumberToString(99), "NumberToString", t)
 
-	TestEqual("100", NumberToString(100), "NumberToString", t)
-	TestEqual("109", NumberToString(109), "NumberToString", t)
-	TestEqual("190", NumberToString(190), "NumberToString", t)
-	TestEqual("123", NumberToString(123), "NumberToString", t)
-	TestEqual("12345678", NumberToString(12345678), "NumberToString", t)
+	AssertEqual("100", NumberToString(100), "NumberToString", t)
+	AssertEqual("109", NumberToString(109), "NumberToString", t)
+	AssertEqual("190", NumberToString(190), "NumberToString", t)
+	AssertEqual("123", NumberToString(123), "NumberToString", t)
+	AssertEqual("12345678", NumberToString(12345678), "NumberToString", t)
 
-	TestEqual("18446744073709551000", NumberToString(18446744073709551000), "NumberToString", t)
-	TestEqual("18446744073709551600", NumberToString(18446744073709551600), "NumberToString", t)
-	TestEqual("18446744073709551610", NumberToString(18446744073709551610), "NumberToString", t)
-	TestEqual("18446744073709551614", NumberToString(18446744073709551614), "NumberToString", t)
-	TestEqual("18446744073709551615", NumberToString(18446744073709551615), "NumberToString", t)
+	AssertEqual("18446744073709551000", NumberToString(18446744073709551000), "NumberToString", t)
+	AssertEqual("18446744073709551600", NumberToString(18446744073709551600), "NumberToString", t)
+	AssertEqual("18446744073709551610", NumberToString(18446744073709551610), "NumberToString", t)
+	AssertEqual("18446744073709551614", NumberToString(18446744073709551614), "NumberToString", t)
+	AssertEqual("18446744073709551615", NumberToString(18446744073709551615), "NumberToString", t)
 }
 
 func consumeDecimalNumberRoundTrip(number uint64, t *testing.T) {
@@ -36,15 +34,13 @@ func consumeDecimalNumberRoundTrip(number uint64, t *testing.T) {
 
 func consumeDecimalNumberRoundTripWithPadding(number uint64, padding string, t *testing.T) {
 	decimalNumber := NumberToString(number)
-	input := []byte(decimalNumber + padding)
-	output := input[:]
+	input := decimalNumber + padding
+	output := input
 	var result uint64
-	TestTrue(ConsumeDecimalNumber(&output, &result), "ConsumeDecimalNumber", t)
-	TestEqual(number, result, "result", t)
-	ish := (*reflect.SliceHeader)(unsafe.Pointer(&input))
-	osh := (*reflect.SliceHeader)(unsafe.Pointer(&output))
-	TestEqual(len(decimalNumber), int(osh.Data-ish.Data), "result", t)
-	TestEqual(len(padding), len(output), "output length", t)
+	AssertTrue(ConsumeDecimalNumber(&output, &result), "ConsumeDecimalNumber", t)
+	AssertEqual(number, result, "result", t)
+	AssertEqual(len(decimalNumber), len(input)-len(output), "result", t)
+	AssertEqual(len(padding), len(output), "output length", t)
 }
 
 func TestConsumeDecimalNumberRoundTrip(t *testing.T) {
@@ -61,7 +57,7 @@ func TestConsumeDecimalNumberRoundTrip(t *testing.T) {
 	consumeDecimalNumberRoundTrip(109, t)
 	consumeDecimalNumberRoundTrip(190, t)
 	consumeDecimalNumberRoundTrip(123, t)
-	TestEqual("12345678", NumberToString(12345678), "NumberToString", t)
+	AssertEqual("12345678", NumberToString(12345678), "NumberToString", t)
 
 	var largeNumber uint64
 	for i := uint64(0); i < 100; i++ {
@@ -89,11 +85,10 @@ func TestConsumeDecimalNumberRoundTripWithPadding(t *testing.T) {
 	}
 }
 
-func consumeDecimalNumberOverflow(inputString string, t *testing.T) {
-	input := []byte(inputString)
-	output := input[:]
+func consumeDecimalNumberOverflow(input string, t *testing.T) {
+	output := input
 	var result uint64
-	TestFalse(ConsumeDecimalNumber(&output, &result), "ConsumeDecimalNumber", t)
+	AssertFalse(ConsumeDecimalNumber(&output, &result), "ConsumeDecimalNumber", t)
 }
 
 func TestConsumeDecimalNumberNoDigits(t *testing.T) {

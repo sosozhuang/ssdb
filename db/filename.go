@@ -75,23 +75,22 @@ func parseFileName(filename string, number *uint64, ft *fileType) (ok bool) {
 		*number = 0
 		*ft = infoLogFile
 	} else if strings.HasPrefix(filename, "MANIFEST-") {
-		rest := []byte(filename[len("MANIFEST-"):])
-		if !util.ConsumeDecimalNumber(&rest, number) {
+		filename = filename[len("MANIFEST-"):]
+		if !util.ConsumeDecimalNumber(&filename, number) {
 			ok = false
 			return
 		}
-		if len(rest) != 0 {
+		if len(filename) != 0 {
 			ok = false
 			return
 		}
 		*ft = descriptorFile
 	} else {
-		rest := []byte(filename)
-		if !util.ConsumeDecimalNumber(&rest, number) {
+		if !util.ConsumeDecimalNumber(&filename, number) {
 			ok = false
 			return
 		}
-		suffix := string(rest)
+		suffix := filename
 		if suffix == ".log" {
 			*ft = logFile
 		} else if suffix == ".sst" || suffix == ".ldb" {

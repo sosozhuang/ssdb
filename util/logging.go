@@ -1,42 +1,39 @@
 package util
 
 import (
-	"bytes"
 	"fmt"
+	"io"
 	"math"
+	"strings"
 )
 
-func AppendNumberTo(s *string, num uint64) {
-	buf := bytes.NewBufferString(*s)
-	fmt.Fprintf(buf, "%d", num)
-	*s = buf.String()
+func AppendNumberTo(w io.Writer, num uint64) {
+	fmt.Fprintf(w, "%d", num)
 }
 
-func appendEscapedStringTo(str *string, value []byte) {
-	buf := bytes.NewBufferString("")
+func AppendEscapedStringTo(w io.Writer, value []byte) {
 	for _, v := range value {
 		if v >= ' ' && v <= '~' {
-			fmt.Fprint(buf, v)
+			fmt.Fprint(w, v)
 		} else {
-			fmt.Fprintf(buf, "\\x%02x", v&0xff)
+			fmt.Fprintf(w, "\\x%02x", v&0xff)
 		}
 	}
-	*str = buf.String()
 }
 
 func NumberToString(num uint64) string {
-	var s string
-	AppendNumberTo(&s, num)
-	return s
+	var builder strings.Builder
+	AppendNumberTo(&builder, num)
+	return builder.String()
 }
 
 func EscapeString(value []byte) string {
-	var r string
-	appendEscapedStringTo(&r, value)
-	return r
+	var builder strings.Builder
+	AppendEscapedStringTo(&builder, value)
+	return builder.String()
 }
 
-func ConsumeDecimalNumber(in *[]byte, val *uint64) bool {
+func ConsumeDecimalNumber(in *string, val *uint64) bool {
 	const lastDigit = '0' + byte(math.MaxUint64%10)
 	value := uint64(0)
 	consumed := 0
@@ -44,7 +41,7 @@ func ConsumeDecimalNumber(in *[]byte, val *uint64) bool {
 		if b < '0' || b > '9' {
 			break
 		}
-		if value > math.MaxUint64/10 || (value == math.MaxUint64/10 && b > lastDigit) {
+		if value > math.MaxUint64/10 || (value == math.MaxUint64/10 && byte(b) > lastDigit) {
 			return false
 		}
 		value = (value * 10) + uint64(b-'0')
