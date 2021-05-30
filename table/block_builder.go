@@ -34,8 +34,8 @@ func (b *blockBuilder) empty() bool {
 }
 
 func (b *blockBuilder) finish() []byte {
-	for i := 0; i < len(b.restarts); i++ {
-		util.PutFixed32(&b.buffer, b.restarts[i])
+	for _, restart := range b.restarts {
+		util.PutFixed32(&b.buffer, restart)
 	}
 	util.PutFixed32(&b.buffer, uint32(len(b.restarts)))
 	b.finished = true
