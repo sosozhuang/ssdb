@@ -89,8 +89,8 @@ func (c *internalKeyComparator) Name() string {
 func (c *internalKeyComparator) FindShortestSeparator(start *[]byte, limit []byte) {
 	userStart := extractUserKey(*start)
 	userLimit := extractUserKey(limit)
-	tmp := make([]byte, len(*start))
-	copy(tmp, *start)
+	tmp := make([]byte, len(userStart))
+	copy(tmp, userStart)
 	c.userComparator.FindShortestSeparator(&tmp, userLimit)
 	if len(tmp) < len(userStart) && c.userComparator.Compare(userStart, tmp) < 0 {
 		util.PutFixed64(&tmp, packSequenceAndType(maxSequenceNumber, valueTypeForSeek))
