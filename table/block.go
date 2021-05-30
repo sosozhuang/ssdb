@@ -55,10 +55,11 @@ func newBlock(contents *blockContents) *block {
 		b.size = 0
 	} else {
 		maxRestartsAllowed := (b.size - b.uint32Size) / b.uint32Size
-		if uint(b.numRestarts()) > maxRestartsAllowed {
+		numRestarts := uint(b.numRestarts())
+		if numRestarts > maxRestartsAllowed {
 			b.size = 0
 		} else {
-			b.restartOffset = uint32(b.size - uint(1+b.numRestarts())*b.uint32Size)
+			b.restartOffset = uint32(b.size - (1+numRestarts)*b.uint32Size)
 		}
 	}
 	return b
@@ -81,16 +82,19 @@ func decodeEntry(data []byte) (shared uint32, nonShared uint32, valueLength uint
 			i = -1
 			return
 		}
+		i += int32(p)
 		data = data[p:]
 		if p = util.GetVarInt32Ptr(data, &nonShared); p == -1 {
 			i = -1
 			return
 		}
+		i += int32(p)
 		data = data[p:]
 		if p = util.GetVarInt32Ptr(data, &valueLength); p == -1 {
 			i = -1
 			return
 		}
+		i += int32(p)
 	}
 
 	if n-int(i) < int(nonShared+valueLength) {
