@@ -31,7 +31,7 @@ func logFileName(db string, number uint64) string {
 }
 
 func tableFileName(db string, number uint64) string {
-	return makeFileName(db, number, "ldb")
+	return makeFileName(db, number, "ssdb")
 }
 
 func sstTableFileName(db string, number uint64) string {
@@ -93,7 +93,7 @@ func parseFileName(filename string, number *uint64, ft *fileType) (ok bool) {
 		suffix := filename
 		if suffix == ".log" {
 			*ft = logFile
-		} else if suffix == ".sst" || suffix == ".ldb" {
+		} else if suffix == ".sst" || suffix == ".ssdb" {
 			*ft = tableFile
 		} else if suffix == ".dbtmp" {
 			*ft = tempFile

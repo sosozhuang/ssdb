@@ -15,7 +15,7 @@ func TestParse(t *testing.T) {
 		{"100.log", 100, logFile},
 		{"0.log", 0, logFile},
 		{"0.sst", 0, tableFile},
-		{"0.ldb", 0, tableFile},
+		{"0.ssdb", 0, tableFile},
 		{"CURRENT", 0, currentFile},
 		{"LOCK", 0, dbLockFile},
 		{"MANIFEST-2", 2, descriptorFile},
