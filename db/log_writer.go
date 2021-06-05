@@ -3,6 +3,7 @@ package db
 import (
 	"ssdb"
 	"ssdb/util"
+	"unsafe"
 )
 
 type logWriter struct {
@@ -83,9 +84,7 @@ func (w *logWriter) emitPhysicalRecord(rt recordType, data []byte) (err error) {
 	buf[6] = byte(rt)
 	crc := util.ChecksumExtend(w.typeCrc[rt], data)
 	crc = util.MaskChecksum(crc)
-	var b [4]byte
-	util.EncodeFixed32(&b, crc)
-	copy(buf[:4], b[:])
+	util.EncodeFixed32((*[4]byte)(unsafe.Pointer(&buf[0])), crc)
 
 	if err = w.dest.Append(buf[:]); err == nil {
 		if err = w.dest.Append(data); err == nil {
