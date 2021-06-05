@@ -161,7 +161,7 @@ func (v *version) foreachOverlapping(userKey, internalKey []byte, arg interface{
 	}
 }
 
-func (v *version) get(options *ssdb.ReadOptions, k *lookupKey, value []byte) (stats *getStats, err error) {
+func (v *version) get(options *ssdb.ReadOptions, k *lookupKey, value *[]byte) (stats *getStats, err error) {
 	ikey := k.internalKey()
 	userKey := k.userKey()
 	ucmp := v.vset.icmp.userComparator
@@ -404,7 +404,7 @@ type saver struct {
 	state   saverState
 	ucmp    ssdb.Comparator
 	userKey []byte
-	value   []byte
+	value   *[]byte
 }
 
 func saveValue(arg interface{}, ikey, v []byte) error {
@@ -420,8 +420,8 @@ func saveValue(arg interface{}, ikey, v []byte) error {
 				s.state = deleted
 			}
 			if s.state == found {
-				s.value = make([]byte, len(v))
-				copy(s.value, v)
+				*(s.value) = make([]byte, len(v))
+				copy(*(s.value), v)
 			}
 		}
 	}
@@ -617,7 +617,7 @@ func newVersionSet(dbName string, options *ssdb.Options, tableCache *tableCache,
 func (s *versionSet) finalize() {
 	s.current.unref()
 	if s.dummyVersions.next != s.dummyVersions {
-		//panic("versionSet: dummyVersions.next != &dummyVersions")
+		panic("versionSet: dummyVersions.next != &dummyVersions")
 	}
 	s.descriptorLog.dest.Finalize()
 	s.descriptorFile.Finalize()
@@ -815,6 +815,7 @@ func (s *versionSet) recover() (saveManifest bool, err error) {
 			saveManifest = true
 		}
 	}
+	builder.finalize()
 	return
 }
 
@@ -922,11 +923,11 @@ func (s *versionSet) numLevelFiles(level int) int {
 	return len(s.current.files[level])
 }
 
-func (s *versionSet) levelSummary(scratch *levelSummaryStorage) [100]byte {
-	buf := bytes.NewBuffer(scratch.buffer[:])
+func (s *versionSet) levelSummary() string {
+	buf := bytes.NewBufferString("")
 	fmt.Fprintf(buf, "files[ %d %d %d %d %d %d %d ]", len(s.current.files[0]), len(s.current.files[1]), len(s.current.files[2]),
 		len(s.current.files[3]), len(s.current.files[4]), len(s.current.files[5]), len(s.current.files[6]))
-	return scratch.buffer
+	return buf.String()
 }
 
 func (s *versionSet) approximateOffsetOf(v *version, ikey *internalKey) (result uint64) {
@@ -1050,7 +1051,7 @@ func (s *versionSet) makeInputIterator(c *compaction) ssdb.Iterator {
 	if num > space {
 		panic("versionSet: num > space")
 	}
-	result := table.NewMergingIterator(s.icmp, list)
+	result := table.NewMergingIterator(s.icmp, list[:num])
 	list = nil
 	return result
 }
@@ -1365,7 +1366,7 @@ func (b *versionSetBuilder) apply(edit *versionEdit) {
 		b.vset.compactPointer[level] = p.second.encode()
 	}
 	del := edit.deletedFiles
-	files := make(deletedFileSlice, len(del))
+	files := make(deletedFileSlice, 0, len(del))
 	for k := range del {
 		files = append(files, k)
 	}
@@ -1482,6 +1483,7 @@ func newCompaction(options *ssdb.Options, level int) *compaction {
 		level:             level,
 		maxOutputFileSize: maxFileSizeForLevel(options, level),
 		inputVersion:      nil,
+		edit:              *newVersionEdit(),
 		grandParents:      nil,
 		grandParentIndex:  0,
 		seenKey:           false,
