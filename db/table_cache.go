@@ -4,6 +4,7 @@ import (
 	"ssdb"
 	"ssdb/table"
 	"ssdb/util"
+	"unsafe"
 )
 
 type tableCache struct {
@@ -61,9 +62,8 @@ func (c *tableCache) evict(fileNumber uint64) {
 }
 
 func (c *tableCache) findTable(fileNumber, fileSize uint64) (handle ssdb.Handle, err error) {
-	var buf [8]byte
-	util.EncodeFixed64(&buf, fileNumber)
-	key := buf[:]
+	key := make([]byte, 8)
+	util.EncodeFixed64((*[8]byte)(unsafe.Pointer(&key[0])), fileNumber)
 	handle = c.cache.Lookup(key)
 	if handle == nil {
 		fName := tableFileName(c.dbName, fileNumber)
