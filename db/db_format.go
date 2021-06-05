@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"ssdb"
 	"ssdb/util"
+	"unsafe"
 )
 
 const (
@@ -207,27 +208,22 @@ func (k *lookupKey) memtableKey() []byte {
 }
 
 func (k *lookupKey) internalKey() []byte {
-	return k.space[k.kstart : k.end-k.kstart]
+	return k.space[k.kstart : k.end-k.kstart+1]
 }
 
 func (k *lookupKey) userKey() []byte {
-	return k.space[k.kstart : k.end-k.kstart-8]
+	return k.space[k.kstart : k.end-k.kstart-8+1]
 }
 
 func newLookupKey(userKey []byte, seq sequenceNumber) *lookupKey {
 	usize := len(userKey)
 	needed := usize + 13
-	if needed <= 200 {
-		needed = 200
-	}
 	lk := &lookupKey{
 		space: make([]byte, needed),
 	}
-	var buff [5]byte
-	lk.kstart = util.EncodeVarInt32(&buff, uint32(usize+8))
-	copy(lk.space[:lk.kstart], buff[:lk.kstart])
+	lk.kstart = util.EncodeVarInt32((*[5]byte)(unsafe.Pointer(&lk.space[0])), uint32(usize+8))
 	copy(lk.space[lk.kstart:], userKey)
-	util.EncodeFixed64(nil, packSequenceAndType(seq, valueTypeForSeek))
+	util.EncodeFixed64((*[8]byte)(unsafe.Pointer(&lk.space[lk.kstart+usize])), packSequenceAndType(seq, valueTypeForSeek))
 	lk.end = lk.kstart + usize + 8
 	return lk
 }
