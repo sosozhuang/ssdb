@@ -221,6 +221,9 @@ func (i *dbIter) parseKey(key *parsedInternalKey) bool {
 		i.bytesUntilReadSampling += i.randomCompactionPeriod()
 		i.db.recordReadSample(k)
 	}
+	if i.bytesUntilReadSampling < uint(bytesRead) {
+		panic("dbIter: i.bytesUntilReadSampling < bytesRead")
+	}
 	i.bytesUntilReadSampling -= uint(bytesRead)
 	if !parseInternalKey(k, key) {
 		i.err = util.CorruptionError1("corrupted internal key in DBIter")
