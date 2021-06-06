@@ -139,38 +139,6 @@ func (w *EnvWrapper) Target() Env {
 	return w.Env
 }
 
-type ErrorEnv struct {
-	EnvWrapper
-	writableFileError     bool
-	numWritableFileErrors int
-}
-
-func NewErrorEnv() *ErrorEnv {
-	return &ErrorEnv{
-		EnvWrapper:            EnvWrapper{Env: DefaultEnv()},
-		writableFileError:     false,
-		numWritableFileErrors: 0,
-	}
-}
-
-func (e *ErrorEnv) NewWritableFile(name string) (result WritableFile, err error) {
-	if e.writableFileError {
-		e.numWritableFileErrors++
-		err = util.IOError1("fake error")
-		return
-	}
-	return e.Target().NewWritableFile(name)
-}
-
-func (e *ErrorEnv) NewAppendableFile(name string) (result WritableFile, err error) {
-	if e.writableFileError {
-		e.numWritableFileErrors++
-		err = util.IOError1("fake error")
-		return
-	}
-	return e.Target().NewAppendableFile(name)
-}
-
 const (
 	writableFileBufferSize = 65536
 )
