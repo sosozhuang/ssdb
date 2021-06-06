@@ -826,15 +826,15 @@ func (s *versionSet) reuseManifest(dscName, dscBase string) bool {
 	var (
 		manifestType   fileType
 		manifestNumber uint64
-		manifestSize   uint64
+		manifestSize   int
 		err            error
 	)
 	if !parseFileName(dscBase, &manifestNumber, &manifestType) || manifestType != descriptorFile {
 		return false
 	}
-	//if manifestSize, err = s.env.GetFileSize(dscName); err != nil || manifestSize >= targetFileSize(s.options) {
-	//	return false
-	//}
+	if manifestSize, err = s.env.GetFileSize(dscName); err != nil || manifestSize >= targetFileSize(s.options) {
+		return false
+	}
 	if s.descriptorFile != nil {
 		panic("versionSet: descriptorFile != nil")
 	}
@@ -847,7 +847,7 @@ func (s *versionSet) reuseManifest(dscName, dscBase string) bool {
 		}
 		return false
 	}
-	s.descriptorLog = newLogWriterWithLength(s.descriptorFile, manifestSize)
+	s.descriptorLog = newLogWriterWithLength(s.descriptorFile, uint64(manifestSize))
 	s.manifestFileNumber = manifestNumber
 	return true
 }
