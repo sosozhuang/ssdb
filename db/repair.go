@@ -61,7 +61,7 @@ func newRepairer(dbName string, options *ssdb.Options) *repairer {
 	r.options = sanitizeOptions(dbName, &r.icmp, &r.iPolicy, *options)
 	r.ownsInfoLog = r.options.InfoLog != options.InfoLog
 	r.ownsCache = r.options.BlockCache != options.BlockCache
-
+	r.tableCache = newTableCache(r.dbName, &r.options, 10)
 	return r
 }
 
