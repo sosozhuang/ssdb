@@ -88,7 +88,7 @@ func copyMemoryToPointer(pointer unsafe.Pointer, src []byte) {
 func (t *MemTable) get(key *lookupKey, value *[]byte) (error, bool) {
 	memKey := key.memtableKey()
 	iter := newSkipListIterator(t.table)
-	iter.seek(memKey)
+	iter.seek(unsafe.Pointer(&memKey[0]))
 	if iter.valid() {
 		// entry format is:
 		//    klength  varint32
@@ -99,14 +99,18 @@ func (t *MemTable) get(key *lookupKey, value *[]byte) (error, bool) {
 		// Check that it belongs to same user key.  We do not check the
 		// sequence number since the Seek() call above should have skipped
 		// all entries with overly large sequence numbers.
-		entry := iter.key().([]byte)
+		entry := iter.key().(unsafe.Pointer)
+		keyLenPtr := *(*[5]byte)(entry)
 		var keyLen uint32
-		i := util.GetVarInt32Ptr(entry[:5], &keyLen)
-		if t.comparator.comparator.userComparator.Compare(entry[i:keyLen-8], key.userKey()) == 0 {
-			tag := util.DecodeFixed64(entry[keyLen-8:])
+		i := util.GetVarInt32Ptr(keyLenPtr[:], &keyLen)
+		userKey := make([]byte, int(keyLen)-8-i+1)
+		copyMemoryToSlice(&userKey, unsafe.Pointer(uintptr(entry)+uintptr(i)), len(userKey))
+		if t.comparator.comparator.userComparator.Compare(userKey, key.userKey()) == 0 {
+			tagPtr := *(*[8]byte)(unsafe.Pointer(uintptr(entry) + uintptr(i) + uintptr(keyLen-8)))
+			tag := util.DecodeFixed64(tagPtr[:])
 			switch ssdb.ValueType(tag & 0xff) {
 			case ssdb.TypeValue:
-				v := getLengthPrefixedSlice(unsafe.Pointer(&entry[i+int(keyLen)]))
+				v := getLengthPrefixedSlice(unsafe.Pointer(uintptr(entry) + uintptr(i) + uintptr(keyLen)))
 				*value = make([]byte, len(v))
 				copy(*value, v)
 				return nil, true
