@@ -106,7 +106,7 @@ func sanitizeOptions(dbName string, iCmp *internalKeyComparator, iPolicy *intern
 		result.FilterPolicy = nil
 	}
 	clipToRangeInt(&result.MaxOpenFiles, 64+numNonTableCacheFiles, 50000)
-	//clipToRangeInt(&result.WriteBufferSize, 64<<10, 1<<30)
+	clipToRangeInt(&result.WriteBufferSize, 64<<10, 1<<30)
 	clipToRangeInt(&result.MaxFileSize, 1<<20, 1<<30)
 	clipToRangeInt(&result.BlockSize, 1<<10, 4<<20)
 	if result.InfoLog == nil {
@@ -175,6 +175,7 @@ func newDB(rawOptions *ssdb.Options, dbName string) *db {
 		seed:                          0,
 		writers:                       make([]*writer, 0),
 		tmpBatch:                      ssdb.NewWriteBatch(),
+		snapshots:                     *newSnapshotList(),
 		pendingOutputs:                make(map[uint64]struct{}),
 		backgroundCompactionScheduled: false,
 		manualCompaction:              nil,
@@ -339,7 +340,7 @@ func (d *db) recover(edit *versionEdit) (saveManifest bool, err error) {
 	for _, fileName := range fileNames {
 		if parseFileName(fileName, &number, &ft) {
 			delete(expected, number)
-			if ft == logFile && ((number > minLog) || (number == prevLog)) {
+			if ft == logFile && ((number >= minLog) || (number == prevLog)) {
 				logs = append(logs, number)
 			}
 		}
@@ -407,11 +408,11 @@ func (d *db) recoverLogFile(logNumber uint64, lastLog bool, saveManifest *bool, 
 
 	var (
 		record []byte
-		ok     bool
 		mem    *MemTable
 	)
 	batch := ssdb.NewWriteBatch()
 	compactions := 0
+	ok := true
 	for ok && err == nil {
 		record, ok = reader.readRecord()
 		if len(record) < 12 {
@@ -439,6 +440,7 @@ func (d *db) recoverLogFile(logNumber uint64, lastLog bool, saveManifest *bool, 
 			*saveManifest = true
 			err = d.writeLevel0Table(mem, edit, nil)
 			mem.unref()
+			mem = nil
 			if err != nil {
 				break
 			}
@@ -498,7 +500,7 @@ func (d *db) writeLevel0Table(mem *MemTable, edit *versionEdit, base *version) (
 	d.mutex.Lock()
 
 	ssdb.Log(d.options.InfoLog, "Level-0 table #%d: %d bytes %v.\n", meta.number, meta.fileSize, err)
-	iter = nil
+	iter.Finalize()
 	delete(d.pendingOutputs, meta.number)
 
 	level := 0
@@ -550,13 +552,13 @@ func (d *db) compactMemTable() {
 func (d *db) CompactRange(begin, end []byte) {
 	maxLevelWithFiles := 1
 	d.mutex.Lock()
-	defer d.mutex.Unlock()
 	base := d.versions.current
 	for level := 1; level < numLevels; level++ {
 		if base.overlapInLevel(level, begin, end) {
 			maxLevelWithFiles = level
 		}
 	}
+	d.mutex.Unlock()
 
 	_ = d.testCompactMemTable()
 	for level := 0; level < maxLevelWithFiles; level++ {
@@ -588,7 +590,7 @@ func (d *db) testCompactRange(level int, begin, end []byte) {
 	}
 
 	d.mutex.Lock()
-	d.mutex.Unlock()
+	defer d.mutex.Unlock()
 	for !manual.done && d.shuttingDown.IsFalse() && d.bgError == nil {
 		if d.manualCompaction == nil {
 			d.manualCompaction = &manual
@@ -695,8 +697,7 @@ func (d *db) backgroundCompaction() {
 		if err = d.versions.logAndApply(&c.edit, &d.mutex); err != nil {
 			d.recordBackgroundError(err)
 		}
-		tmp := new(levelSummaryStorage)
-		ssdb.Log(d.options.InfoLog, "Moved #%d to level-%d %d bytes %s: %s.\n", f.number, c.level+1, f.fileSize, err, d.versions.levelSummary(tmp))
+		ssdb.Log(d.options.InfoLog, "Moved #%d to level-%d %d bytes %s: %s.\n", f.number, c.level+1, f.fileSize, err, d.versions.levelSummary())
 	} else {
 		compact := newCompactionState(c)
 		if err = d.doCompactionWork(compact); err != nil {
@@ -753,9 +754,9 @@ func (d *db) openCompactionOutputFile(compact *compactionState) (err error) {
 	fileNumber := d.versions.newFileNumber()
 	d.pendingOutputs[fileNumber] = struct{}{}
 	out := compactionStateOutput{
-		number:   fileNumber,
-		smallest: internalKey{},
-		largest:  internalKey{},
+		number: fileNumber,
+		//smallest: internalKey{},
+		//largest:  internalKey{},
 	}
 	out.smallest.clear()
 	out.largest.clear()
@@ -793,6 +794,7 @@ func (d *db) finishCompactionOutputFile(compact *compactionState, input ssdb.Ite
 	currentBytes := compact.builder.FileSize()
 	compact.currentOutput().fileSize = currentBytes
 	compact.totalBytes += currentBytes
+	compact.builder.(ssdb.Finalizer).Finalize()
 	compact.builder = nil
 
 	if err == nil {
@@ -801,11 +803,12 @@ func (d *db) finishCompactionOutputFile(compact *compactionState, input ssdb.Ite
 	if err == nil {
 		err = compact.outfile.Close()
 	}
+	compact.outfile.Finalize()
 	compact.outfile = nil
 	if err == nil && currentEntries > 0 {
 		iter := d.tableCache.newIterator(ssdb.NewReadOptions(), outputNumber, currentBytes, nil)
 		err = iter.Status()
-		iter = nil
+		iter.Finalize()
 		if err == nil {
 			ssdb.Log(d.options.InfoLog, "Generated table #%d@%d: %d keys, %d bytes", outputNumber, compact.compaction.level, currentEntries, currentBytes)
 		}
@@ -844,7 +847,7 @@ func (d *db) doCompactionWork(compact *compactionState) error {
 		panic("db: compact.outfile != nil")
 	}
 	if d.snapshots.empty() {
-		compact.smallestSnapshot = sequenceNumber(d.versions.lastSequence)
+		compact.smallestSnapshot = d.versions.lastSequence
 	} else {
 		compact.smallestSnapshot = d.snapshots.oldest().sequenceNumber
 	}
@@ -904,16 +907,16 @@ func (d *db) doCompactionWork(compact *compactionState) error {
 					break
 				}
 			}
-		}
-		if compact.builder.NumEntries() == 0 {
-			compact.currentOutput().smallest.decodeFrom(key)
-		}
-		compact.currentOutput().largest.decodeFrom(key)
-		compact.builder.Add(key, input.Value())
+			if compact.builder.NumEntries() == 0 {
+				compact.currentOutput().smallest.decodeFrom(key)
+			}
+			compact.currentOutput().largest.decodeFrom(key)
+			compact.builder.Add(key, input.Value())
 
-		if compact.builder.FileSize() >= compact.compaction.maxOutputFileSize {
-			if err = d.finishCompactionOutputFile(compact, input); err != nil {
-				break
+			if compact.builder.FileSize() >= compact.compaction.maxOutputFileSize {
+				if err = d.finishCompactionOutputFile(compact, input); err != nil {
+					break
+				}
 			}
 		}
 		input.Next()
@@ -928,6 +931,7 @@ func (d *db) doCompactionWork(compact *compactionState) error {
 	if err == nil {
 		err = input.Status()
 	}
+	input.Finalize()
 	input = nil
 
 	var stats compactionStats
@@ -950,8 +954,7 @@ func (d *db) doCompactionWork(compact *compactionState) error {
 		d.recordBackgroundError(err)
 	}
 
-	var tmp levelSummaryStorage
-	ssdb.Log(d.options.InfoLog, "compacted to: %s.\n", d.versions.levelSummary(&tmp))
+	ssdb.Log(d.options.InfoLog, "compacted to: %s.\n", d.versions.levelSummary())
 	return err
 }
 
@@ -978,7 +981,7 @@ func (d *db) newInternalIterator(options *ssdb.ReadOptions) (internalIter ssdb.I
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 	latestSnapshot = d.versions.lastSequence
-	list := make([]ssdb.Iterator, 1)
+	list := make([]ssdb.Iterator, 1, 2)
 	list[0] = d.mem.newIterator()
 	d.mem.ref()
 	if d.imm != nil {
@@ -989,7 +992,7 @@ func (d *db) newInternalIterator(options *ssdb.ReadOptions) (internalIter ssdb.I
 	internalIter = table.NewMergingIterator(&d.internalComparator, list)
 	d.versions.current.ref()
 
-	cleanup := iterState{
+	cleanup := &iterState{
 		mu:      &d.mutex,
 		version: d.versions.current,
 		mem:     d.mem,
@@ -1032,7 +1035,7 @@ func (d *db) Get(options *ssdb.ReadOptions, key []byte) (value []byte, err error
 	current.ref()
 
 	haveStatUpdate := false
-	var stats *getStats
+	stats := new(getStats)
 	d.mutex.Unlock()
 	lkey := newLookupKey(key, snapshotSeq)
 	var ok bool
@@ -1040,11 +1043,11 @@ func (d *db) Get(options *ssdb.ReadOptions, key []byte) (value []byte, err error
 	} else if imm != nil {
 		if err, ok = imm.get(lkey, &value); ok {
 		} else {
-			stats, err = current.get(options, lkey, value)
+			stats, err = current.get(options, lkey, &value)
 			haveStatUpdate = true
 		}
 	} else {
-		stats, err = current.get(options, lkey, value)
+		stats, err = current.get(options, lkey, &value)
 		haveStatUpdate = true
 	}
 	d.mutex.Lock()
