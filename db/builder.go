@@ -15,9 +15,10 @@ func buildTable(dbName string, env ssdb.Env, options *ssdb.Options, tableCache *
 			return
 		}
 		builder := table.NewBuilder(options, file)
-		meta.smallest.decodeFrom(iter.Key())
+		key := iter.Key()
+		meta.smallest.decodeFrom(key)
 		for ; iter.Valid(); iter.Next() {
-			key := iter.Key()
+			key = iter.Key()
 			meta.largest.decodeFrom(key)
 			builder.Add(key, iter.Value())
 		}
