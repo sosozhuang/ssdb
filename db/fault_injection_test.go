@@ -309,10 +309,10 @@ type faultInjectionTest struct {
 	t         *testing.T
 }
 
-type ExpectedVerifResult int8
+type ExpectedVerifyResult int8
 
 const (
-	valExpectNoError ExpectedVerifResult = iota
+	valExpectNoError ExpectedVerifyResult = iota
 	valExpectError
 )
 
@@ -370,7 +370,7 @@ func (t *faultInjectionTest) readValue(i int) ([]byte, error) {
 	return t.db.Get(options, key)
 }
 
-func (t *faultInjectionTest) verify(startIdx, numVals int, expected ExpectedVerifResult) error {
+func (t *faultInjectionTest) verify(startIdx, numVals int, expected ExpectedVerifyResult) error {
 	var (
 		err        error
 		val        []byte
