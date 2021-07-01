@@ -2069,11 +2069,15 @@ func newModelDB(options *ssdb.Options) *modelDB {
 }
 
 func (d *modelDB) Put(options *ssdb.WriteOptions, key, value []byte) error {
-	panic("implement me")
+	batch := ssdb.NewWriteBatch()
+	batch.Put(key, value)
+	return d.Write(options, batch)
 }
 
 func (d *modelDB) Delete(options *ssdb.WriteOptions, key []byte) error {
-	panic("implement me")
+	batch := ssdb.NewWriteBatch()
+	batch.Delete(key)
+	return d.Write(options, batch)
 }
 
 func (d *modelDB) Write(_ *ssdb.WriteOptions, batch ssdb.WriteBatch) error {
