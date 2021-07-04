@@ -287,7 +287,7 @@ func TestTableFileIndexData(t *testing.T) {
 	dbi := test.db.(*db)
 	_ = dbi.testCompactMemTable()
 
-	test.corrupt(tableFile, -2000, 500)
+	test.corrupt(tableFile, -2500, 500)
 	test.reopen()
 	test.check(5000, 9999)
 }
