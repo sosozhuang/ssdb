@@ -399,8 +399,8 @@ func (d *dbConstructor) newDB() {
 type testType int8
 
 const (
-	memtableTest testType = iota
-	dbTest
+	memtableTestType testType = iota
+	dbTestType
 )
 
 type testArgs struct {
@@ -411,12 +411,12 @@ type testArgs struct {
 
 var testArgList = []testArgs{
 	// Restart interval does not matter for memtables
-	{memtableTest, false, 16},
-	{memtableTest, true, 16},
+	{memtableTestType, false, 16},
+	{memtableTestType, true, 16},
 
 	// Do not bother with restart interval variations for DB
-	{dbTest, false, 16},
-	{dbTest, true, 16},
+	{dbTestType, false, 16},
+	{dbTestType, true, 16},
 }
 var numTestArgs = len(testArgList)
 
@@ -442,9 +442,9 @@ func (h *harness) init(args *testArgs) {
 		h.options.Comparator = &revKeyComparator
 	}
 	switch args.t {
-	case memtableTest:
+	case memtableTestType:
 		h.constructor = newMemTableConstructor(h.options.Comparator, h.t)
-	case dbTest:
+	case dbTestType:
 		h.constructor = newDBConstructor(h.options.Comparator, h.t)
 	}
 }
@@ -684,7 +684,7 @@ func TestRandomized(t *testing.T) {
 func TestRandomizedLongDB(t *testing.T) {
 	h := newHarness(t)
 	rnd := util.NewRandom(uint32(util.RandomSeed()))
-	h.init(&testArgs{dbTest, false, 16})
+	h.init(&testArgs{dbTestType, false, 16})
 	numEntries := 100000
 	for e := 0; e < numEntries; e++ {
 		h.add(util.RandomKey(rnd, int(rnd.Skewed(4))), util.RandomString(rnd, int(rnd.Skewed(5))))

@@ -224,7 +224,7 @@ const (
 	endCfg
 )
 
-type dbTest1 struct {
+type dbTest struct {
 	dbName       string
 	env          *specialEnv
 	db           ssdb.DB
@@ -234,8 +234,8 @@ type dbTest1 struct {
 	t            *testing.T
 }
 
-func newDBTest(t *testing.T) *dbTest1 {
-	test := &dbTest1{
+func newDBTest(t *testing.T) *dbTest {
+	test := &dbTest{
 		dbName:       tmpDir() + "/db_test",
 		env:          newSpecialEnv(ssdb.DefaultEnv()),
 		lastOptions:  ssdb.NewOptions(),
@@ -248,14 +248,14 @@ func newDBTest(t *testing.T) *dbTest1 {
 	return test
 }
 
-func (t *dbTest1) finalize() {
+func (t *dbTest) finalize() {
 	if t.db != nil {
 		t.db.(*db).finalize()
 	}
 	_ = Destroy(t.dbName, ssdb.NewOptions())
 }
 
-func (t *dbTest1) changeOptions() bool {
+func (t *dbTest) changeOptions() bool {
 	t.optionConfig++
 	if t.optionConfig >= endCfg {
 		return false
@@ -264,7 +264,7 @@ func (t *dbTest1) changeOptions() bool {
 	return true
 }
 
-func (t *dbTest1) currentOptions() *ssdb.Options {
+func (t *dbTest) currentOptions() *ssdb.Options {
 	options := ssdb.NewOptions()
 	options.ReuseLogs = false
 	switch t.optionConfig {
@@ -278,22 +278,22 @@ func (t *dbTest1) currentOptions() *ssdb.Options {
 	return options
 }
 
-func (t *dbTest1) dbFull() *db {
+func (t *dbTest) dbFull() *db {
 	return t.db.(*db)
 }
 
-func (t *dbTest1) reopen(options *ssdb.Options) {
+func (t *dbTest) reopen(options *ssdb.Options) {
 	util.AssertNotError(t.tryOpen(options), "tryOpen", t.t)
 }
 
-func (t *dbTest1) close() {
+func (t *dbTest) close() {
 	if t.db != nil {
 		t.dbFull().finalize()
 		t.db = nil
 	}
 }
 
-func (t *dbTest1) destroyAndReopen(options *ssdb.Options) {
+func (t *dbTest) destroyAndReopen(options *ssdb.Options) {
 	if t.db != nil {
 		t.dbFull().finalize()
 		t.db = nil
@@ -303,7 +303,7 @@ func (t *dbTest1) destroyAndReopen(options *ssdb.Options) {
 
 }
 
-func (t *dbTest1) tryOpen(options *ssdb.Options) (err error) {
+func (t *dbTest) tryOpen(options *ssdb.Options) (err error) {
 	if t.db != nil {
 		t.dbFull().finalize()
 		t.db = nil
@@ -320,19 +320,19 @@ func (t *dbTest1) tryOpen(options *ssdb.Options) (err error) {
 	return
 }
 
-func (t *dbTest1) put(k, v string) error {
+func (t *dbTest) put(k, v string) error {
 	return t.db.Put(ssdb.NewWriteOptions(), []byte(k), []byte(v))
 }
 
-func (t *dbTest1) delete(k string) error {
+func (t *dbTest) delete(k string) error {
 	return t.db.Delete(ssdb.NewWriteOptions(), []byte(k))
 }
 
-func (t *dbTest1) get(k string) string {
+func (t *dbTest) get(k string) string {
 	return t.getWithSnapshot(k, nil)
 }
 
-func (t *dbTest1) getWithSnapshot(k string, snapshot ssdb.Snapshot) string {
+func (t *dbTest) getWithSnapshot(k string, snapshot ssdb.Snapshot) string {
 	options := ssdb.NewReadOptions()
 	options.Snapshot = snapshot
 	v, err := t.db.Get(options, []byte(k))
@@ -345,7 +345,7 @@ func (t *dbTest1) getWithSnapshot(k string, snapshot ssdb.Snapshot) string {
 	return result
 }
 
-func (t *dbTest1) contents() string {
+func (t *dbTest) contents() string {
 	forward := make([]string, 0)
 	var b strings.Builder
 	iter := t.db.NewIterator(ssdb.NewReadOptions())
@@ -367,7 +367,7 @@ func (t *dbTest1) contents() string {
 	return b.String()
 }
 
-func (t *dbTest1) allEntriesFor(userKey string) string {
+func (t *dbTest) allEntriesFor(userKey string) string {
 	iter := t.dbFull().testNewInternalIterator()
 	target := newInternalKey([]byte(userKey), maxSequenceNumber, ssdb.TypeValue)
 	iter.Seek(target.encode())
@@ -408,14 +408,14 @@ func (t *dbTest1) allEntriesFor(userKey string) string {
 	return result
 }
 
-func (t *dbTest1) numTableFilesAtLevel(level int) (i int) {
+func (t *dbTest) numTableFilesAtLevel(level int) (i int) {
 	property, ok := t.db.GetProperty("ssdb.num-files-at-level" + util.NumberToString(uint64(level)))
 	util.AssertTrue(ok, "GetProperty", t.t)
 	i, _ = strconv.Atoi(property)
 	return
 }
 
-func (t *dbTest1) totalTableFiles() int {
+func (t *dbTest) totalTableFiles() int {
 	result := 0
 	for level := 0; level < numLevels; level++ {
 		result += t.numTableFilesAtLevel(level)
@@ -423,7 +423,7 @@ func (t *dbTest1) totalTableFiles() int {
 	return result
 }
 
-func (t *dbTest1) filesPerLevel() string {
+func (t *dbTest) filesPerLevel() string {
 	var b strings.Builder
 	for level := 0; level < numLevels; level++ {
 		f := t.numTableFilesAtLevel(level)
@@ -436,12 +436,12 @@ func (t *dbTest1) filesPerLevel() string {
 	return b.String()
 }
 
-func (t *dbTest1) countFiles() int {
+func (t *dbTest) countFiles() int {
 	files, _ := t.env.GetChildren(t.dbName)
 	return len(files)
 }
 
-func (t *dbTest1) size(start, limit string) uint64 {
+func (t *dbTest) size(start, limit string) uint64 {
 	r := ssdb.Range{
 		Start: []byte(start),
 		Limit: []byte(limit),
@@ -450,11 +450,11 @@ func (t *dbTest1) size(start, limit string) uint64 {
 	return sizes[0]
 }
 
-func (t *dbTest1) compact(start, limit string) {
+func (t *dbTest) compact(start, limit string) {
 	t.db.CompactRange([]byte(start), []byte(limit))
 }
 
-func (t *dbTest1) makeTables(n int, smallKey, largeKey string) {
+func (t *dbTest) makeTables(n int, smallKey, largeKey string) {
 	for i := 0; i < n; i++ {
 		_ = t.put(smallKey, "begin")
 		_ = t.put(largeKey, "end")
@@ -462,11 +462,11 @@ func (t *dbTest1) makeTables(n int, smallKey, largeKey string) {
 	}
 }
 
-func (t *dbTest1) fillLevels(smallest, largest string) {
+func (t *dbTest) fillLevels(smallest, largest string) {
 	t.makeTables(numLevels, smallest, largest)
 }
 
-func (t *dbTest1) dumpFileCounts(label string) {
+func (t *dbTest) dumpFileCounts(label string) {
 	fmt.Fprintf(os.Stderr, "---\n%s:\n", label)
 	fmt.Fprintf(os.Stderr, "maxoverlap: %d\n", t.dbFull().testMaxNextLevelOverlappingBytes())
 	for level := 0; level < numLevels; level++ {
@@ -476,12 +476,12 @@ func (t *dbTest1) dumpFileCounts(label string) {
 	}
 }
 
-func (t *dbTest1) dumpSSTableList() string {
+func (t *dbTest) dumpSSTableList() string {
 	property, _ := t.db.GetProperty("ssdb.sstables")
 	return property
 }
 
-func (t *dbTest1) iterStatus(iter ssdb.Iterator) string {
+func (t *dbTest) iterStatus(iter ssdb.Iterator) string {
 	var result string
 	if iter.Valid() {
 		result = string(iter.Key()) + "->" + string(iter.Value())
@@ -491,7 +491,7 @@ func (t *dbTest1) iterStatus(iter ssdb.Iterator) string {
 	return result
 }
 
-func (t *dbTest1) deleteAnSSTFile() bool {
+func (t *dbTest) deleteAnSSTFile() bool {
 	filenames, err := t.env.GetChildren(t.dbName)
 	util.AssertNotError(err, "GetChildren", t.t)
 	var (
@@ -507,7 +507,7 @@ func (t *dbTest1) deleteAnSSTFile() bool {
 	return false
 }
 
-func (t *dbTest1) renameSSDBToSST() int {
+func (t *dbTest) renameSSDBToSST() int {
 	filenames, err := t.env.GetChildren(t.dbName)
 	util.AssertNotError(err, "GetChildren", t.t)
 	var (
@@ -1974,7 +1974,7 @@ const (
 )
 
 type mtState struct {
-	test       *dbTest1
+	test       *dbTest
 	stop       util.AtomicBool
 	counter    [numThreads]uint32
 	threadDone [numThreads]util.AtomicBool
