@@ -69,8 +69,6 @@ func newCompactionState(c *compaction) *compactionState {
 	return &compactionState{
 		compaction:       c,
 		smallestSnapshot: 0,
-		outfile:          nil,
-		builder:          nil,
 		totalBytes:       0,
 	}
 }
@@ -229,7 +227,10 @@ func (d *db) deleteObsoleteFiles() {
 	if d.bgError != nil {
 		return
 	}
-	live := d.pendingOutputs
+	live := make(map[uint64]struct{}, len(d.pendingOutputs))
+	for k := range d.pendingOutputs {
+		live[k] = struct{}{}
+	}
 	d.versions.addLiveFiles(live)
 
 	fileNames, _ := d.env.GetChildren(d.dbName)
@@ -280,7 +281,9 @@ func (d *db) finalize() {
 	}
 	d.tmpBatch = nil
 	d.log = nil
-	d.logFile.Finalize()
+	if d.logFile != nil {
+		d.logFile.Finalize()
+	}
 	d.tableCache.finalize()
 	if d.ownsInfoLog {
 		d.options.InfoLog = nil
@@ -446,7 +449,7 @@ func (d *db) recoverLogFile(logNumber uint64, lastLog bool, saveManifest *bool, 
 			}
 		}
 	}
-	file = nil
+	file.Finalize()
 	if err == nil && d.options.ReuseLogs && lastLog && compactions == 0 {
 		if d.logFile != nil {
 			panic("db: logFile != nil")
@@ -707,7 +710,9 @@ func (d *db) backgroundCompaction() {
 		c.releaseInputs()
 		d.deleteObsoleteFiles()
 	}
-	c = nil
+	if c != nil {
+		c.finalize()
+	}
 	if err == nil {
 	} else if d.shuttingDown.IsTrue() {
 	} else {
@@ -730,13 +735,15 @@ func (d *db) backgroundCompaction() {
 func (d *db) cleanupCompaction(compact *compactionState) {
 	if compact.builder != nil {
 		compact.builder.Abandon()
-		compact.builder = nil
+		compact.builder.Finalize()
 	} else {
 		if compact.outfile != nil {
 			panic("db: compact.outfile != nil")
 		}
 	}
-	compact.outfile = nil
+	if compact.outfile != nil {
+		compact.outfile.Finalize()
+	}
 	for _, output := range compact.outputs {
 		delete(d.pendingOutputs, output.number)
 	}
@@ -794,7 +801,7 @@ func (d *db) finishCompactionOutputFile(compact *compactionState, input ssdb.Ite
 	currentBytes := compact.builder.FileSize()
 	compact.currentOutput().fileSize = currentBytes
 	compact.totalBytes += currentBytes
-	compact.builder.(ssdb.Finalizer).Finalize()
+	compact.builder.Finalize()
 	compact.builder = nil
 
 	if err == nil {
@@ -1244,6 +1251,7 @@ func (d *db) makeRoomForWrite(force bool) (err error) {
 				d.versions.reuseFileNumber(newLogNumber)
 				break
 			}
+			d.logFile.Finalize()
 			d.logFile = lfile
 			d.logFileNumber = newLogNumber
 			d.log = newLogWriter(lfile)
@@ -1389,7 +1397,7 @@ func Open(options *ssdb.Options, dbName string) (db ssdb.DB, err error) {
 		}
 		db = impl
 	} else {
-		impl = nil
+		impl.finalize()
 	}
 	return
 }
