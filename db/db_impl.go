@@ -1,5 +1,9 @@
 package db
 
+/*
+#include <stdio.h>
+*/
+import "C"
 import (
 	"fmt"
 	"log"
@@ -291,6 +295,10 @@ func (d *db) finalize() {
 	if d.ownsCache {
 		d.options.BlockCache.Finalize()
 	}
+}
+
+func testFflush() {
+	C.fflush(nil)
 }
 
 type Uint64Slice []uint64
@@ -1153,7 +1161,7 @@ func (d *db) Write(options *ssdb.WriteOptions, updates ssdb.WriteBatch) (err err
 	for {
 		ready := d.writers[0]
 		d.writers = d.writers[1:]
-		if ready == w {
+		if ready != w {
 			ready.err = err
 			ready.done = true
 			ready.cond.Signal()
