@@ -1971,6 +1971,7 @@ func TestDBBloomFilter(t *testing.T) {
 	fmt.Fprintf(os.Stderr, "%d missing => %d reads\n", n, reads)
 	util.AssertLessThanOrEqual(reads, int64(3*n/100), "reads", t)
 
+	test.env.delayDataSync.SetFalse()
 	test.close()
 	options.BlockCache.Finalize()
 }
