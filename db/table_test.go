@@ -354,7 +354,7 @@ func newDBConstructor(cmp ssdb.Comparator, t *testing.T) constructorInterface {
 }
 
 func (d *dbConstructor) finishImpl(options *ssdb.Options, data kvMap) error {
-	d.dbInterface.(*db).finalize()
+	d.dbInterface.Close()
 	d.dbInterface = nil
 	d.newDB()
 	for _, key := range data.s {
@@ -374,7 +374,7 @@ func (d *dbConstructor) db() ssdb.DB {
 }
 
 func (d *dbConstructor) finalize() {
-	d.dbInterface.(*db).finalize()
+	d.dbInterface.Close()
 }
 
 func tmpDir() string {
