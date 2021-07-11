@@ -7,12 +7,15 @@ import (
 	"unsafe"
 )
 
+const (
+	uint32Size = uint(unsafe.Sizeof(uint32(0)))
+)
+
 type block struct {
 	data          []byte
 	size          uint
 	restartOffset uint32
 	owned         bool
-	uint32Size    uint
 }
 
 func (b *block) getSize() uint {
@@ -20,7 +23,7 @@ func (b *block) getSize() uint {
 }
 
 func (b *block) newIterator(comparator ssdb.Comparator) ssdb.Iterator {
-	if b.size < b.uint32Size {
+	if b.size < uint32Size {
 		return NewErrorIterator(util.CorruptionError1("bad block contents"))
 	}
 	numRestarts := b.numRestarts()
@@ -31,10 +34,10 @@ func (b *block) newIterator(comparator ssdb.Comparator) ssdb.Iterator {
 }
 
 func (b *block) numRestarts() uint32 {
-	if b.size < b.uint32Size {
+	if b.size < uint32Size {
 		panic("block: size < uint32Size")
 	}
-	return util.DecodeFixed32(b.data[b.size-b.uint32Size:])
+	return util.DecodeFixed32(b.data[b.size-uint32Size:])
 }
 
 func (b *block) finalize() {
@@ -49,17 +52,16 @@ func newBlock(contents *blockContents) *block {
 		size:          uint(len(contents.data)),
 		restartOffset: 0,
 		owned:         contents.heapAllocated,
-		uint32Size:    uint(unsafe.Sizeof(uint32(0))),
 	}
-	if b.size < b.uint32Size {
+	if b.size < uint32Size {
 		b.size = 0
 	} else {
-		maxRestartsAllowed := (b.size - b.uint32Size) / b.uint32Size
+		maxRestartsAllowed := (b.size - uint32Size) / uint32Size
 		numRestarts := uint(b.numRestarts())
 		if numRestarts > maxRestartsAllowed {
 			b.size = 0
 		} else {
-			b.restartOffset = uint32(b.size - (1+numRestarts)*b.uint32Size)
+			b.restartOffset = uint32(b.size - (1+numRestarts)*uint32Size)
 		}
 	}
 	return b
@@ -144,7 +146,7 @@ func (i *blockIterator) getRestartPoint(index uint32) uint32 {
 	if index > i.numRestarts {
 		panic("blockIterator: index > i.numRestarts")
 	}
-	return util.DecodeFixed32(i.data[i.restarts+index*uint32(unsafe.Sizeof(uint32(0))):])
+	return util.DecodeFixed32(i.data[i.restarts+index*uint32(uint32Size):])
 }
 
 func (i *blockIterator) seekToRestartPoint(index uint32) {
@@ -272,17 +274,16 @@ func (i *blockIterator) parseNextKey() bool {
 	if index == -1 || len(i.key) < int(shared) {
 		i.corruptionError()
 		return false
-	} else {
-		i.key = i.key[:shared]
-		start := i.current + uint32(index)
-		stop := start + nonShared
-		i.key = append(i.key, i.data[start:stop]...)
-		start = stop
-		stop = start + valueLength
-		i.value = i.data[start:stop]
-		for i.restartIndex+1 < i.numRestarts && i.getRestartPoint(i.restartIndex+1) < i.current {
-			i.restartIndex++
-		}
+	}
+	i.key = i.key[:shared]
+	start := i.current + uint32(index)
+	stop := start + nonShared
+	i.key = append(i.key, i.data[start:stop]...)
+	start = stop
+	stop = start + valueLength
+	i.value = i.data[start:stop]
+	for i.restartIndex+1 < i.numRestarts && i.getRestartPoint(i.restartIndex+1) < i.current {
+		i.restartIndex++
 	}
 	return true
 }
