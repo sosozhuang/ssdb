@@ -250,7 +250,7 @@ func newDBTest(t *testing.T) *dbTest {
 
 func (t *dbTest) finalize() {
 	if t.db != nil {
-		t.db.(*db).finalize()
+		t.db.Close()
 	}
 	_ = Destroy(t.dbName, ssdb.NewOptions())
 }
@@ -288,14 +288,14 @@ func (t *dbTest) reopen(options *ssdb.Options) {
 
 func (t *dbTest) close() {
 	if t.db != nil {
-		t.dbFull().finalize()
+		t.db.Close()
 		t.db = nil
 	}
 }
 
 func (t *dbTest) destroyAndReopen(options *ssdb.Options) {
 	if t.db != nil {
-		t.dbFull().finalize()
+		t.db.Close()
 		t.db = nil
 	}
 	_ = Destroy(t.dbName, ssdb.NewOptions())
@@ -305,7 +305,7 @@ func (t *dbTest) destroyAndReopen(options *ssdb.Options) {
 
 func (t *dbTest) tryOpen(options *ssdb.Options) (err error) {
 	if t.db != nil {
-		t.dbFull().finalize()
+		t.db.Close()
 		t.db = nil
 	}
 	var opts *ssdb.Options
@@ -1703,7 +1703,7 @@ func TestDBOpenOptions(t *testing.T) {
 	d, err = Open(opts, dbName)
 	util.AssertNotError(err, "Open", t)
 	util.AssertTrue(d != nil, "db", t)
-	d.(*db).finalize()
+	d.Close()
 	d = nil
 
 	opts.CreateIfMissing = false
@@ -1718,7 +1718,7 @@ func TestDBOpenOptions(t *testing.T) {
 	util.AssertNotError(err, "error", t)
 	util.AssertTrue(d != nil, "db", t)
 
-	d.(*db).finalize()
+	d.Close()
 	d = nil
 }
 
@@ -1765,7 +1765,7 @@ func TestDBDestroyOpenDB(t *testing.T) {
 	util.AssertError(Destroy(dbName, ssdb.NewOptions()), "Destroy", t)
 	util.AssertTrue(test.env.FileExists(dbName), "FileExists", t)
 
-	d.(*db).finalize()
+	d.Close()
 	d = nil
 	util.AssertNotError(Destroy(dbName, ssdb.NewOptions()), "Destroy", t)
 	util.AssertFalse(test.env.FileExists(dbName), "FileExists", t)
@@ -2141,6 +2141,9 @@ func (d *modelDB) GetApproximateSizes(r []ssdb.Range) []uint64 {
 func (d *modelDB) CompactRange(_, _ []byte) {
 }
 
+func (d *modelDB) Close() {
+}
+
 type modelSnapshot struct {
 	m map[string]string
 }
@@ -2356,7 +2359,7 @@ func bmLogAndApply(iters, numBaseFiles int, t *testing.T) {
 	util.AssertNotError(err, "Open", t)
 	util.AssertTrue(d != nil, "db", t)
 
-	d.(*db).finalize()
+	d.Close()
 	d = nil
 
 	env := ssdb.DefaultEnv()

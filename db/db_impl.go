@@ -266,7 +266,7 @@ func (d *db) deleteObsoleteFiles() {
 	}
 }
 
-func (d *db) finalize() {
+func (d *db) Close() {
 	d.mutex.Lock()
 	d.shuttingDown.SetTrue()
 	for d.backgroundCompactionScheduled {
@@ -1405,7 +1405,7 @@ func Open(options *ssdb.Options, dbName string) (db ssdb.DB, err error) {
 		}
 		db = impl
 	} else {
-		impl.finalize()
+		impl.Close()
 	}
 	return
 }
