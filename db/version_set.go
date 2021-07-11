@@ -173,17 +173,15 @@ func (v *version) get(options *ssdb.ReadOptions, k *lookupKey, value *[]byte) (s
 	var (
 		lastFileRead      *fileMetaData
 		lastFileReadLevel = -1
-		tmp               []*fileMetaData
 		tmp2              *fileMetaData
-		numFiles          int
 	)
 	for level := 0; level < numLevels; level++ {
-		if numFiles = len(v.files[level]); numFiles == 0 {
+		files := v.files[level]
+		if len(files) == 0 {
 			continue
 		}
-		files := v.files[level]
 		if level == 0 {
-			tmp = make([]*fileMetaData, 0, numFiles)
+			tmp := make([]*fileMetaData, 0, len(files))
 			for _, f := range files {
 				if ucmp.Compare(userKey, f.smallest.userKey()) >= 0 &&
 					ucmp.Compare(userKey, f.largest.userKey()) <= 0 {
@@ -195,29 +193,24 @@ func (v *version) get(options *ssdb.ReadOptions, k *lookupKey, value *[]byte) (s
 			}
 			sort.Sort(fileMetaDataSlice(tmp))
 			files = tmp
-			numFiles = len(tmp)
 		} else {
-			if index := findFile(v.vset.icmp, v.files[level], ikey); index >= numFiles {
+			if index := findFile(v.vset.icmp, files, ikey); index >= len(files) {
 				files = nil
-				numFiles = 0
 			} else {
 				tmp2 = files[index]
 				if ucmp.Compare(userKey, tmp2.smallest.userKey()) < 0 {
 					files = nil
-					numFiles = 0
 				} else {
 					files = []*fileMetaData{tmp2}
-					numFiles = 1
 				}
 			}
 		}
 
-		for i := 0; i < numFiles; i++ {
+		for _, f := range files {
 			if lastFileRead != nil && stats.seekFile == nil {
 				stats.seekFile = lastFileRead
 				stats.seekFileLevel = lastFileReadLevel
 			}
-			f := files[i]
 			lastFileRead = f
 			lastFileReadLevel = level
 
@@ -619,8 +612,10 @@ func (s *versionSet) finalize() {
 	if s.dummyVersions.next != s.dummyVersions {
 		panic("versionSet: dummyVersions.next != &dummyVersions")
 	}
-	s.descriptorLog.dest.Finalize()
-	s.descriptorFile.Finalize()
+	s.descriptorLog = nil
+	if s.descriptorFile != nil {
+		s.descriptorFile.Finalize()
+	}
 }
 
 func (s *versionSet) appendVersion(v *version) {
@@ -701,7 +696,6 @@ func (s *versionSet) logAndApply(edit *versionEdit, mu *sync.Mutex) (err error) 
 	} else {
 		v.finalize()
 		if len(newManifestFile) != 0 {
-			s.descriptorLog.dest.Finalize()
 			s.descriptorFile.Finalize()
 			s.descriptorLog = nil
 			s.descriptorFile = nil
@@ -722,7 +716,7 @@ func (r *versionSetLogReporter) corruption(bytes int, err error) {
 }
 
 func (s *versionSet) recover() (saveManifest bool, err error) {
-	var current []byte
+	var current string
 	if current, err = ssdb.ReadFileToString(s.env, currentFileName(s.dbName)); err != nil {
 		return
 	}
@@ -731,7 +725,7 @@ func (s *versionSet) recover() (saveManifest bool, err error) {
 		return
 	}
 	current = current[:len(current)-1]
-	dscName := s.dbName + "/" + string(current)
+	dscName := s.dbName + "/" + current
 	var file ssdb.SequentialFile
 	if file, err = s.env.NewSequentialFile(dscName); err != nil {
 		if ssdb.IsNotFound(err) {
@@ -753,9 +747,10 @@ func (s *versionSet) recover() (saveManifest bool, err error) {
 	reporter := versionSetLogReporter{err: err}
 	reader := newLogReader(file, &reporter, true, 0)
 	var record []byte
-	ok := true
-	for ok && err == nil {
-		record, ok = reader.readRecord()
+	for ok := true; ok && err == nil; {
+		if record, ok = reader.readRecord(); !ok {
+			continue
+		}
 		edit := newVersionEdit()
 		if err = edit.decodeFrom(record); err == nil {
 			if edit.hasComparator && edit.comparator != s.icmp.userComparator.Name() {
@@ -1494,7 +1489,7 @@ func newCompaction(options *ssdb.Options, level int) *compaction {
 }
 
 func (c *compaction) finalize() {
-	if c.inputVersion != nil {
+	if c != nil && c.inputVersion != nil {
 		c.inputVersion.unref()
 	}
 }
