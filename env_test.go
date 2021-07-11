@@ -183,7 +183,7 @@ func TestReopenWritableFile(t *testing.T) {
 	util.AssertNotError(err, "WritableFile.Close", t)
 
 	b, err := ReadFileToString(env, testFileName)
-	util.AssertEqual("42", string(b), "ReadFileToString", t)
+	util.AssertEqual("42", b, "ReadFileToString", t)
 	_ = env.DeleteFile(testFileName)
 }
 
@@ -210,6 +210,6 @@ func TestReopenAppendableFile(t *testing.T) {
 	util.AssertNotError(err, "AppendableFile.Close", t)
 
 	b, err := ReadFileToString(env, testFileName)
-	util.AssertEqual("hello world!42", string(b), "ReadFileToString", t)
+	util.AssertEqual("hello world!42", b, "ReadFileToString", t)
 	_ = env.DeleteFile(testFileName)
 }

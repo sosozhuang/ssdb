@@ -196,15 +196,15 @@ func TestOverwriteOpenFile(t *testing.T) {
 	fileDataLen := len(write1Data)
 	testFileName := tmpDir() + "/leveldb-TestFile.dat"
 
-	err := ssdb.WriteBytesToFile(test.env, []byte(write1Data), testFileName)
-	util.AssertNotError(err, "WriteBytesToFile", t)
+	err := ssdb.WriteStringToFile(test.env, write1Data, testFileName)
+	util.AssertNotError(err, "WriteStringToFile", t)
 
 	randFile, err := test.env.NewRandomAccessFile(testFileName)
 	util.AssertNotError(err, "NewRandomAccessFile", t)
 
 	write2Data := "Write #2 data"
-	err = ssdb.WriteBytesToFile(test.env, []byte(write2Data), testFileName)
-	util.AssertNotError(err, "WriteBytesToFile", t)
+	err = ssdb.WriteStringToFile(test.env, write2Data, testFileName)
+	util.AssertNotError(err, "WriteStringToFile", t)
 
 	b := make([]byte, fileDataLen)
 	result, _, err := randFile.Read(b, 0)

@@ -88,13 +88,13 @@ func (t *recoveryTest) get(k string, snapshot ssdb.Snapshot) string {
 }
 
 func (t *recoveryTest) manifestFileName() string {
-	current, err := ssdb.ReadFileToBytes(t.env, currentFileName(t.dbName))
-	util.AssertNotError(err, "ReadFileToBytes", t.t)
+	current, err := ssdb.ReadFileToString(t.env, currentFileName(t.dbName))
+	util.AssertNotError(err, "ReadFileToString", t.t)
 	l := len(current)
 	if l > 0 && current[l-1] == '\n' {
 		current = current[:l-1]
 	}
-	return t.dbName + string(os.PathSeparator) + string(current)
+	return t.dbName + string(os.PathSeparator) + current
 }
 
 func (t *recoveryTest) logName(number uint64) string {

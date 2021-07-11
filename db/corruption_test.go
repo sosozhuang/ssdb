@@ -182,13 +182,14 @@ func (t *corruptionTest) corrupt(ft fileType, offset, bytesToCorrupt int) {
 		bytesToCorrupt = fileSize - offset
 	}
 
-	contents, err := ssdb.ReadFileToBytes(t.env.Target(), fname)
-	util.AssertNotError(err, "ReadFileToBytes", t.t)
+	contents, err := ssdb.ReadFileToString(t.env.Target(), fname)
+	util.AssertNotError(err, "ReadFileToString", t.t)
+	newContents := []byte(contents)
 	for i := 0; i < bytesToCorrupt; i++ {
-		contents[i+offset] ^= 0x80
+		newContents[i+offset] ^= 0x80
 	}
-	err = ssdb.WriteBytesToFile(t.env.Target(), contents, fname)
-	util.AssertNotError(err, "WriteBytesToFile", t.t)
+	err = ssdb.WriteStringToFile(t.env.Target(), string(newContents), fname)
+	util.AssertNotError(err, "WriteStringToFile", t.t)
 }
 
 func (t *corruptionTest) property(name string) int {

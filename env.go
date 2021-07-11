@@ -84,41 +84,41 @@ func Log(infoLog *log.Logger, format string, v ...interface{}) {
 	}
 }
 
-func WriteStringToFile(env Env, data []byte, name string) error {
-	return doWriteStringToFile(env, data, name, false)
+func WriteStringToFile(env Env, data string, name string) error {
+	return doWriteBytesToFile(env, data, name, false)
 }
 
-func WriteStringToFileSync(env Env, data []byte, name string) error {
-	return doWriteStringToFile(env, data, name, true)
+func WriteStringToFileSync(env Env, data string, name string) error {
+	return doWriteBytesToFile(env, data, name, true)
 }
 
-func doWriteStringToFile(env Env, data []byte, name string, shouldSync bool) error {
+func doWriteBytesToFile(env Env, data string, name string, shouldSync bool) error {
 	file, err := env.NewWritableFile(name)
 	if err != nil {
 		return err
 	}
-	err = file.Append(data)
+	err = file.Append([]byte(data))
 	if err == nil && shouldSync {
 		err = file.Sync()
 	}
 	if err == nil {
 		err = file.Close()
 	}
-	file = nil
+	file.Finalize()
 	if err != nil {
 		_ = env.DeleteFile(name)
 	}
 	return err
 }
 
-func ReadFileToString(env Env, name string) ([]byte, error) {
+func ReadFileToString(env Env, name string) (string, error) {
 	file, err := env.NewSequentialFile(name)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	const bufferSize = 8192
 	space := make([]byte, bufferSize)
-	data := make([]byte, 0)
+	var data strings.Builder
 	var r []byte
 	var n int
 	for {
@@ -126,9 +126,10 @@ func ReadFileToString(env Env, name string) ([]byte, error) {
 		if err != nil || n == 0 {
 			break
 		}
-		data = append(data, r...)
+		data.Write(r)
 	}
-	return data, err
+	file.Finalize()
+	return data.String(), err
 }
 
 type EnvWrapper struct {

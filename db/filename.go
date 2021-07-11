@@ -114,7 +114,7 @@ func setCurrentFile(env ssdb.Env, db string, descriptorNumber uint64) error {
 	contents := manifest[len(db)+1:]
 	tmp := tempFileName(db, descriptorNumber)
 	var err error
-	if err = ssdb.WriteStringToFileSync(env, []byte(contents+"\n"), tmp); err == nil {
+	if err = ssdb.WriteStringToFileSync(env, contents+"\n", tmp); err == nil {
 		err = env.RenameFile(tmp, currentFileName(db))
 	}
 	if err != nil {
