@@ -208,11 +208,11 @@ func (k *lookupKey) memtableKey() []byte {
 }
 
 func (k *lookupKey) internalKey() []byte {
-	return k.space[k.kstart : k.end-k.kstart+1]
+	return k.space[k.kstart:k.end]
 }
 
 func (k *lookupKey) userKey() []byte {
-	return k.space[k.kstart : k.end-k.kstart-8+1]
+	return k.space[k.kstart : k.end-8]
 }
 
 func newLookupKey(userKey []byte, seq sequenceNumber) *lookupKey {
