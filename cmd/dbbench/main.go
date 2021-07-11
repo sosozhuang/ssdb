@@ -305,7 +305,7 @@ func (b *benchmark) printHeader() {
 }
 
 func (b *benchmark) printEnvironment() {
-	fmt.Fprintf(os.Stderr, "LevelDB:    version %d.%d\n", ssdb.MajorVersion, ssdb.MinorVersion)
+	fmt.Fprintf(os.Stderr, "SSDB:    version %d.%d\n", ssdb.MajorVersion, ssdb.MinorVersion)
 	now := time.Now()
 	fmt.Fprintf(os.Stderr, "Date:       %s\n", now.String())
 	fmt.Fprintf(os.Stderr, "CPU:        %d\n", runtime.NumCPU())
