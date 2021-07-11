@@ -73,7 +73,7 @@ func newCorruptionTest(t *testing.T) *corruptionTest {
 
 func (t *corruptionTest) finalize() {
 	if t.db != nil {
-		t.db.(*db).finalize()
+		t.db.Close()
 	}
 	if t.tinyCache != nil {
 		t.tinyCache.Finalize()
@@ -82,7 +82,7 @@ func (t *corruptionTest) finalize() {
 
 func (t *corruptionTest) tryReopen() (err error) {
 	if t.db != nil {
-		t.db.(*db).finalize()
+		t.db.Close()
 		t.db = nil
 	}
 	t.db, err = Open(t.options, t.dbName)
@@ -95,7 +95,7 @@ func (t *corruptionTest) reopen() {
 
 func (t *corruptionTest) repairDB() {
 	if t.db != nil {
-		t.db.(*db).finalize()
+		t.db.Close()
 		t.db = nil
 	}
 	util.AssertNotError(Repair(t.dbName, t.options), "repair", t.t)

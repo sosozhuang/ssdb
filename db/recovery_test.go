@@ -45,7 +45,7 @@ func (t *recoveryTest) canAppend() bool {
 
 func (t *recoveryTest) close() {
 	if t.db != nil {
-		t.db.(*db).finalize()
+		t.db.Close()
 		t.db = nil
 	}
 }
@@ -88,8 +88,8 @@ func (t *recoveryTest) get(k string, snapshot ssdb.Snapshot) string {
 }
 
 func (t *recoveryTest) manifestFileName() string {
-	current, err := ssdb.ReadFileToString(t.env, currentFileName(t.dbName))
-	util.AssertNotError(err, "ReadFileToString", t.t)
+	current, err := ssdb.ReadFileToBytes(t.env, currentFileName(t.dbName))
+	util.AssertNotError(err, "ReadFileToBytes", t.t)
 	l := len(current)
 	if l > 0 && current[l-1] == '\n' {
 		current = current[:l-1]

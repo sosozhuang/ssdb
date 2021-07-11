@@ -404,7 +404,7 @@ func value(k int) []byte {
 
 func (t *faultInjectionTest) openDB() (err error) {
 	if t.db != nil {
-		t.db.(*db).finalize()
+		t.db.Close()
 	}
 	t.db = nil
 	t.env.resetState()
@@ -413,7 +413,7 @@ func (t *faultInjectionTest) openDB() (err error) {
 }
 
 func (t *faultInjectionTest) closeDB() {
-	t.db.(*db).finalize()
+	t.db.Close()
 	t.db = nil
 }
 
