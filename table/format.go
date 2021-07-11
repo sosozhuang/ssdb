@@ -3,6 +3,7 @@ package table
 import (
 	"bytes"
 	"github.com/golang/snappy"
+	"reflect"
 	"ssdb"
 	"ssdb/util"
 	"unsafe"
@@ -20,22 +21,6 @@ func newBlockHandle() *blockHandle {
 		offset: ^uint64(0),
 		size:   ^uint64(0),
 	}
-}
-
-func (h *blockHandle) getOffset() uint64 {
-	return h.offset
-}
-
-func (h *blockHandle) setOffset(offset uint64) {
-	h.offset = offset
-}
-
-func (h *blockHandle) getSize() uint64 {
-	return h.size
-}
-
-func (h *blockHandle) setSize(size uint64) {
-	h.size = size
 }
 
 func (h *blockHandle) encodeTo(dst *[]byte) {
@@ -121,13 +106,13 @@ type blockContents struct {
 }
 
 func readBlock(file ssdb.RandomAccessFile, options *ssdb.ReadOptions, handle *blockHandle) (result *blockContents, err error) {
-	n := handle.getSize()
+	n := handle.size
 	buf := make([]byte, n+blockTrailerSize)
 	var (
 		i        int
 		contents []byte
 	)
-	if contents, i, err = file.Read(buf, int64(handle.getOffset())); err != nil {
+	if contents, i, err = file.Read(buf, int64(handle.offset)); err != nil {
 		return
 	} else if i != len(contents) {
 		err = util.CorruptionError1("truncated block read")
@@ -145,9 +130,9 @@ func readBlock(file ssdb.RandomAccessFile, options *ssdb.ReadOptions, handle *bl
 	switch ssdb.CompressionType(contents[n]) {
 	case ssdb.NoCompression:
 		result = new(blockContents)
-		bp := uintptr(unsafe.Pointer(&buf))
-		cp := uintptr(unsafe.Pointer(&contents))
-		if bp != cp {
+		bsh := (*reflect.SliceHeader)(unsafe.Pointer(&buf))
+		csh := (*reflect.SliceHeader)(unsafe.Pointer(&contents))
+		if bsh.Data != csh.Data {
 			result.data = contents[:n]
 			result.heapAllocated = false
 			result.cachable = false
