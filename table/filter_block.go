@@ -39,8 +39,8 @@ func (b *filterBlockBuilder) finish() []byte {
 		b.generateFilter()
 	}
 	arrayOffset := uint32(len(b.result))
-	for i := 0; i < len(b.filterOffsets); i++ {
-		util.PutFixed32(&b.result, b.filterOffsets[i])
+	for _, filterOffset := range b.filterOffsets {
+		util.PutFixed32(&b.result, filterOffset)
 	}
 	util.PutFixed32(&b.result, arrayOffset)
 	b.result = append(b.result, filterBaseLg)
@@ -61,7 +61,7 @@ func (b *filterBlockBuilder) generateFilter() {
 
 	b.filterOffsets = append(b.filterOffsets, uint32(len(b.result)))
 	b.policy.CreateFilter(b.tmpKeys, &b.result)
-	b.tmpKeys = make([][]byte, 0)
+	b.tmpKeys = nil
 	b.keys = make([]byte, 0)
 	b.start = make([]int, 0)
 }
@@ -72,7 +72,6 @@ func newFilterBlockBuilder(policy ssdb.FilterPolicy) *filterBlockBuilder {
 		keys:          make([]byte, 0),
 		start:         make([]int, 0),
 		result:        make([]byte, 0),
-		tmpKeys:       make([][]byte, 0),
 		filterOffsets: make([]uint32, 0),
 	}
 }
@@ -112,11 +111,12 @@ func newFilterBlockReader(policy ssdb.FilterPolicy, contents []byte) (r *filterB
 		return
 	}
 	r.baseLg = uint(contents[n-1])
-	r.offset = uint64(util.DecodeFixed32(contents[n-5:]))
-	if int(r.offset) > (n - 5) {
+	lastWord := util.DecodeFixed32(contents[n-5:])
+	if int(lastWord) > (n - 5) {
 		return
 	}
 	r.data = contents
-	r.num = (n - 5 - int(r.offset)) / 4
+	r.offset = uint64(lastWord)
+	r.num = (n - 5 - int(lastWord)) / 4
 	return
 }

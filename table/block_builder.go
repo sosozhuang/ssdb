@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"ssdb"
 	"ssdb/util"
-	"unsafe"
 )
 
 type blockBuilder struct {
@@ -26,7 +25,8 @@ func (b *blockBuilder) reset() {
 }
 
 func (b *blockBuilder) currentSizeEstimate() int {
-	return len(b.buffer) + len(b.restarts)*int(unsafe.Sizeof(uint32(0))) + int(unsafe.Sizeof(uint32(0)))
+	const n = int(uint32Size)
+	return len(b.buffer) + len(b.restarts)*n + n
 }
 
 func (b *blockBuilder) empty() bool {
@@ -80,7 +80,6 @@ func (b *blockBuilder) add(key, value []byte) {
 		panic("blockBuilder: lastKey != key")
 	}
 	b.counter++
-
 }
 
 func newBlockBuilder(options *ssdb.Options) *blockBuilder {
