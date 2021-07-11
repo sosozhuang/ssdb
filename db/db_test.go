@@ -376,6 +376,7 @@ func (t *dbTest) allEntriesFor(userKey string) string {
 		result = iter.Status().Error()
 	} else {
 		var b strings.Builder
+		b.WriteString("[ ")
 		first := true
 		for iter.Valid() {
 			var ikey parsedInternalKey
@@ -425,6 +426,7 @@ func (t *dbTest) totalTableFiles() int {
 
 func (t *dbTest) filesPerLevel() string {
 	var b strings.Builder
+	lastNonZeroOffset := 0
 	for level := 0; level < numLevels; level++ {
 		f := t.numTableFilesAtLevel(level)
 		if level == 0 {
@@ -432,8 +434,11 @@ func (t *dbTest) filesPerLevel() string {
 		} else {
 			fmt.Fprintf(&b, "%s%d", ",", f)
 		}
+		if f > 0 {
+			lastNonZeroOffset = b.Len()
+		}
 	}
-	return b.String()
+	return b.String()[:lastNonZeroOffset]
 }
 
 func (t *dbTest) countFiles() int {
@@ -805,7 +810,7 @@ func TestDBGetEncountersEmptyLevel(t *testing.T) {
 			util.AssertLessThanOrEqual(compactionCount, 100, "compactionCount", t)
 			compactionCount++
 			_ = test.put("a", "begin")
-			_ = test.put("a", "begin")
+			_ = test.put("z", "end")
 			_ = test.dbFull().testCompactMemTable()
 		}
 
@@ -1247,11 +1252,11 @@ func TestDBApproximateSizes(t *testing.T) {
 		const (
 			n  = 80
 			s1 = 100000
-			s2 = 100000
+			s2 = 105000
 		)
 		rnd := util.NewRandom(301)
 		for i := 0; i < n; i++ {
-			util.AssertNotError(test.put(dbKey(i), randomString(rnd, i)), "put", t)
+			util.AssertNotError(test.put(dbKey(i), randomString(rnd, s1)), "put", t)
 		}
 
 		util.AssertTrue(between(test.size("", dbKey(50)), 0, 0), "size", t)
@@ -1259,7 +1264,7 @@ func TestDBApproximateSizes(t *testing.T) {
 		if options.ReuseLogs {
 			test.reopen(options)
 			util.AssertTrue(between(test.size("", dbKey(50)), 0, 0), "size", t)
-			continue
+			goto cont
 		}
 
 		for run := 0; run < 3; run++ {
@@ -1273,13 +1278,14 @@ func TestDBApproximateSizes(t *testing.T) {
 				}
 				util.AssertTrue(between(test.size("", dbKey(50)), uint64(s1*50), uint64(s2*50)), "size", t)
 				util.AssertTrue(between(test.size("", dbKey(50)+".suffix"), uint64(s1*50), uint64(s2*50)), "size", t)
-				cstart := key(compactStart)
-				cend := key(compactStart + 9)
+				cstart := dbKey(compactStart)
+				cend := dbKey(compactStart + 9)
 				test.dbFull().testCompactRange(0, []byte(cstart), []byte(cend))
 			}
 			util.AssertEqual(test.numTableFilesAtLevel(0), 0, "numTableFilesAtLevel", t)
-			util.AssertEqual(test.numTableFilesAtLevel(1), 0, "numTableFilesAtLevel", t)
+			util.AssertGreaterThan(test.numTableFilesAtLevel(1), 0, "numTableFilesAtLevel", t)
 		}
+	cont:
 		if !test.changeOptions() {
 			break
 		}
@@ -1392,11 +1398,11 @@ func TestDBHiddenValuesAreRemoved(t *testing.T) {
 		test.fillLevels("a", "z")
 
 		big := randomString(rnd, 50000)
-		test.put("foo", big)
-		test.put("pastfoo", "v")
+		_ = test.put("foo", big)
+		_ = test.put("pastfoo", "v")
 		snapshot := test.db.GetSnapshot()
-		test.put("foo", "tiny")
-		test.put("pastfoo2", "v2")
+		_ = test.put("foo", "tiny")
+		_ = test.put("pastfoo2", "v2")
 
 		util.AssertNotError(test.dbFull().testCompactMemTable(), "testCompactMemTable", t)
 		util.AssertGreaterThan(test.numTableFilesAtLevel(0), 0, "numTableFilesAtLevel", t)
@@ -1558,6 +1564,7 @@ func TestDBFflushIssue474(t *testing.T) {
 	const num = 100000
 	rnd := util.NewRandom(uint32(randomSeed()))
 	for i := 0; i < num; i++ {
+		testFflush()
 		util.AssertNotError(test.put(randomKey(rnd), randomString(rnd, 100)), "put", t)
 	}
 }
@@ -1648,7 +1655,8 @@ func toNumber(x []byte) int {
 		panic("invalid")
 	}
 	var val int
-	if _, err := fmt.Sscanf(string(x), "[%i]%c", &val); err != nil {
+	var ignored byte
+	if i, err := fmt.Sscanf(string(x), "[%v]%c", &val, &ignored); i <= 0 {
 		panic(err)
 	}
 	return val
@@ -1688,12 +1696,12 @@ func TestDBOpenOptions(t *testing.T) {
 	opts := ssdb.NewOptions()
 	opts.CreateIfMissing = false
 	d, err := Open(opts, dbName)
-	util.AssertTrue(strings.Contains(err.Error(), "does not exist"), "error", t)
+	util.AssertTrue(strings.Contains(err.Error(), "does not exist"), "Open", t)
 	util.AssertTrue(d == nil, "db", t)
 
 	opts.CreateIfMissing = true
 	d, err = Open(opts, dbName)
-	util.AssertNotError(err, "err", t)
+	util.AssertNotError(err, "Open", t)
 	util.AssertTrue(d != nil, "db", t)
 	d.(*db).finalize()
 	d = nil
@@ -1727,7 +1735,7 @@ func TestDBDestroyEmptyDir(t *testing.T) {
 	util.AssertTrue(env.FileExists(dbName), "FileExists", t)
 	children, err := env.GetChildren(dbName)
 	util.AssertNotError(err, "GetChildren", t)
-	util.AssertEqual(2, len(children), "children", t)
+	util.AssertEqual(0, len(children), "children", t)
 	util.AssertNotError(Destroy(dbName, opts), "Destroy", t)
 	util.AssertFalse(env.FileExists(dbName), "FileExists", t)
 
@@ -1855,7 +1863,7 @@ func TestDBManifestWriteError(t *testing.T) {
 		options.CreateIfMissing = true
 		options.ErrorIfExists = false
 		test.destroyAndReopen(options)
-		util.AssertError(test.put("foo", "bar"), "Put", t)
+		util.AssertNotError(test.put("foo", "bar"), "Put", t)
 		util.AssertEqual("bar", test.get("foo"), "get", t)
 
 		_ = test.dbFull().testCompactMemTable()
@@ -1944,6 +1952,7 @@ func TestDBBloomFilter(t *testing.T) {
 	_ = test.dbFull().testCompactMemTable()
 
 	test.env.delayDataSync.SetTrue()
+	defer test.env.delayDataSync.SetFalse()
 
 	test.env.randomReadCounter.reset()
 	for i := 0; i < n; i++ {
@@ -1962,7 +1971,6 @@ func TestDBBloomFilter(t *testing.T) {
 	fmt.Fprintf(os.Stderr, "%d missing => %d reads\n", n, reads)
 	util.AssertLessThanOrEqual(reads, int64(3*n/100), "reads", t)
 
-	test.env.delayDataSync.SetFalse()
 	test.close()
 	options.BlockCache.Finalize()
 }
@@ -2025,8 +2033,8 @@ func mtThreadBody(arg interface{}) {
 func TestDBMultiThreaded(t *testing.T) {
 	test := newDBTest(t)
 	defer test.finalize()
+	var mt mtState
 	for {
-		var mt mtState
 		mt.test = test
 		mt.stop.SetFalse()
 		for id := 0; id < numThreads; id++ {
@@ -2097,7 +2105,7 @@ func (h *modelDBHandler) Delete(key []byte) {
 	delete(h.m, string(key))
 }
 
-func (d *modelDB) Get(options *ssdb.ReadOptions, key []byte) ([]byte, error) {
+func (d *modelDB) Get(_ *ssdb.ReadOptions, _ []byte) ([]byte, error) {
 	panic("not implemented")
 }
 
@@ -2111,7 +2119,11 @@ func (d *modelDB) NewIterator(options *ssdb.ReadOptions) ssdb.Iterator {
 }
 
 func (d *modelDB) GetSnapshot() ssdb.Snapshot {
-	return &modelSnapshot{m: d.m}
+	s := &modelSnapshot{m: make(map[string]string, len(d.m))}
+	for k, v := range d.m {
+		s.m[k] = v
+	}
+	return s
 }
 
 func (d *modelDB) ReleaseSnapshot(_ ssdb.Snapshot) {
@@ -2181,10 +2193,15 @@ func (i *modelIterator) Seek(target []byte) {
 
 func (i *modelIterator) Next() {
 	i.iter++
+	if i.iter == len(i.keys) {
+		i.iter = -1
+	}
 }
 
 func (i *modelIterator) Prev() {
-	i.iter--
+	if i.iter >= 0 {
+		i.iter--
+	}
 }
 
 func (i *modelIterator) Key() []byte {
@@ -2310,6 +2327,12 @@ func TestDBRandomized(t *testing.T) {
 				dbSnap = test.db.GetSnapshot()
 			}
 		}
+		if modelSnap != nil {
+			model.ReleaseSnapshot(modelSnap)
+		}
+		if dbSnap != nil {
+			test.db.ReleaseSnapshot(dbSnap)
+		}
 		if !test.changeOptions() {
 			break
 		}
@@ -2372,4 +2395,11 @@ func bmLogAndApply(iters, numBaseFiles int, t *testing.T) {
 	stopMicros := env.NowMicros()
 	us := stopMicros - startMicros
 	fmt.Fprintf(os.Stderr, "BM_LogAndApply/%-6d   %8d iters : %9d us (%7.0f us / iter)\n", numBaseFiles, iters, us, float64(us)/float64(iters))
+}
+
+func TestDBLogAndApply(t *testing.T) {
+	bmLogAndApply(1000, 1, t)
+	bmLogAndApply(1000, 100, t)
+	bmLogAndApply(1000, 10000, t)
+	bmLogAndApply(100, 100000, t)
 }
