@@ -220,7 +220,7 @@ func (d *db) newDB() error {
 }
 
 func (d *db) maybeIgnoreError(err *error) {
-	if err == nil || d.options.ParanoidChecks {
+	if *err == nil || d.options.ParanoidChecks {
 	} else {
 		ssdb.Log(d.options.InfoLog, "Ignoring error %v.\n", *err)
 		*err = nil
