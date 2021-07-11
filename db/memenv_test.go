@@ -255,5 +255,5 @@ func TestDBTest(t *testing.T) {
 		util.AssertNotError(err, "Get", t)
 		util.AssertEqual(string(res), vals[i], "value", t)
 	}
-	dbi.finalize()
+	d.Close()
 }
