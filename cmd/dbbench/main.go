@@ -289,8 +289,9 @@ func newBenchmark() *benchmark {
 	return b
 }
 
-func (b *benchmark) finalize() {
-	b.cache.Finalize()
+func (b *benchmark) finish() {
+	b.db.Close()
+	b.cache.Clear()
 }
 
 func (b *benchmark) printHeader() {
@@ -571,7 +572,7 @@ func (b *benchmark) readSequential(thread *threadState) {
 		thread.stats.finishSingleOp()
 		i++
 	}
-	iter.Finalize()
+	iter.Close()
 	thread.stats.addBytes(bs)
 }
 
@@ -584,7 +585,7 @@ func (b *benchmark) readReverse(thread *threadState) {
 		thread.stats.finishSingleOp()
 		i++
 	}
-	iter.Finalize()
+	iter.Close()
 	thread.stats.addBytes(bs)
 }
 
@@ -643,7 +644,7 @@ func (b *benchmark) seekRandom(thread *threadState) {
 		if iter.Valid() && bytes.Compare(iter.Key(), key) == 0 {
 			found++
 		}
-		iter.Finalize()
+		iter.Close()
 		thread.stats.finishSingleOp()
 	}
 	thread.stats.addMessage([]byte(fmt.Sprintf("(%d of %d found)", found, b.num)))
@@ -833,5 +834,6 @@ func main() {
 	}
 	flag.Parse()
 	benchmark := newBenchmark()
+	defer benchmark.finish()
 	benchmark.run()
 }
