@@ -10,7 +10,7 @@ type Random struct {
 
 func (r *Random) Next() uint32 {
 	const a = 16807
-	product := uint64(r.seed * a)
+	product := uint64(r.seed) * a
 	r.seed = uint32((product >> 31) + (product & uint64(m)))
 	if r.seed > m {
 		r.seed -= m
