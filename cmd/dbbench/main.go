@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
 	"github.com/golang/snappy"
 	"os"
@@ -257,9 +256,6 @@ type benchmark struct {
 
 func newBenchmark() *benchmark {
 	b := &benchmark{
-		cache:           nil,
-		filterPolicy:    nil,
-		db:              nil,
 		num:             flagsNum,
 		valueSize:       flagsValueSize,
 		entriesPerBatch: 1,
@@ -284,14 +280,18 @@ func newBenchmark() *benchmark {
 		}
 	}
 	if !flagsUseExistingDB {
-		_ = db.Destroy("", ssdb.NewOptions())
+		_ = db.Destroy(flagsDB, ssdb.NewOptions())
 	}
 	return b
 }
 
 func (b *benchmark) finish() {
-	b.db.Close()
-	b.cache.Clear()
+	if b.db != nil {
+		b.db.Close()
+	}
+	if b.cache != nil {
+		b.cache.Clear()
+	}
 }
 
 func (b *benchmark) printHeader() {
@@ -306,7 +306,7 @@ func (b *benchmark) printHeader() {
 }
 
 func (b *benchmark) printEnvironment() {
-	fmt.Fprintf(os.Stderr, "SSDB:    version %d.%d\n", ssdb.MajorVersion, ssdb.MinorVersion)
+	fmt.Fprintf(os.Stderr, "SSDB:       version %d.%d\n", ssdb.MajorVersion, ssdb.MinorVersion)
 	now := time.Now()
 	fmt.Fprintf(os.Stderr, "Date:       %s\n", now.String())
 	fmt.Fprintf(os.Stderr, "CPU:        %d\n", runtime.NumCPU())
@@ -406,6 +406,7 @@ func (b *benchmark) run() {
 				fmt.Fprintf(os.Stdout, "%-12s : skipped (--use_existing_db is true)\n", name)
 				method = nil
 			} else {
+				b.db.Close()
 				b.db = nil
 				_ = db.Destroy(flagsDB, ssdb.NewOptions())
 				b.open()
@@ -465,7 +466,7 @@ func crc32(thread *threadState) {
 
 func snappyCompress(thread *threadState) {
 	gen := newRandomGenerator()
-	input := gen.generate(int(ssdb.NewOptions().BlockSize))
+	input := gen.generate(ssdb.NewOptions().BlockSize)
 	bs := int64(0)
 	produced := int64(0)
 	var compressed []byte
@@ -483,7 +484,7 @@ func snappyCompress(thread *threadState) {
 
 func snappyUncompress(thread *threadState) {
 	gen := newRandomGenerator()
-	input := gen.generate(int(ssdb.NewOptions().BlockSize))
+	input := gen.generate(ssdb.NewOptions().BlockSize)
 	compressed := snappy.Encode(nil, input)
 	var err error
 	bs := int64(0)
@@ -500,6 +501,9 @@ func snappyUncompress(thread *threadState) {
 }
 
 func (b *benchmark) open() {
+	if b.db != nil {
+		panic("db != nil")
+	}
 	options := ssdb.NewOptions()
 	options.Env = env
 	options.CreateIfMissing = !flagsUseExistingDB
@@ -519,6 +523,8 @@ func (b *benchmark) open() {
 
 func (b *benchmark) openBench(thread *threadState) {
 	for i := 0; i < b.num; i++ {
+		b.db.Close()
+		b.db = nil
 		b.open()
 		thread.stats.finishSingleOp()
 	}
@@ -710,7 +716,7 @@ func (b *benchmark) readWhileWriting(thread *threadState) {
 	}
 }
 
-func (b *benchmark) compact(thread *threadState) {
+func (b *benchmark) compact(_ *threadState) {
 	b.db.CompactRange(nil, nil)
 }
 
@@ -735,7 +741,7 @@ func (b *benchmark) heapProfile() {
 	if err == nil {
 		err = file.Append(buf.Bytes())
 	}
-	file.Finalize()
+	_ = file.Close()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "heap profiling not supported\n")
 		_ = env.DeleteFile(fname)
@@ -786,7 +792,7 @@ func main() {
 		junk byte
 		err  error
 	)
-	for _, arg := range os.Args {
+	for _, arg := range os.Args[1:] {
 		if strings.HasPrefix(arg, "--benchmarks=") {
 			flagsBenchmarks = strings.Split(strings.TrimPrefix(arg, "--benchmarks="), ",")
 		} else if _, err = fmt.Sscanf(arg, "--compression_ratio=%f%c", &d, &junk); err == nil {
@@ -832,7 +838,6 @@ func main() {
 		flagsDB, _ = env.GetTestDirectory()
 		flagsDB += "/dbbench"
 	}
-	flag.Parse()
 	benchmark := newBenchmark()
 	defer benchmark.finish()
 	benchmark.run()
