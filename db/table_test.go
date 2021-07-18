@@ -113,8 +113,8 @@ func (s *stringSink) Sync() error {
 	return nil
 }
 
-func (s *stringSink) Finalize() {
-}
+//func (s *stringSink) Finalize() {
+//}
 
 func (s *stringSink) getContents() []byte {
 	return s.contents
@@ -146,8 +146,8 @@ func (s *stringSource) Read(b []byte, offset int64) (result []byte, n int, err e
 	return
 }
 
-func (s *stringSource) Finalize() {
-}
+//func (s *stringSource) Finalize() {
+//}
 
 func (s *stringSource) size() int {
 	return len(s.contents)
@@ -294,6 +294,11 @@ func (i *keyConvertingIterator) Status() error {
 	return i.err
 }
 
+func (i *keyConvertingIterator) Close() {
+	i.iter.Close()
+	i.CleanUpIterator.Close()
+}
+
 func newKeyConvertingIterator(iter ssdb.Iterator) *keyConvertingIterator {
 	return &keyConvertingIterator{iter: iter}
 }
@@ -354,8 +359,10 @@ func newDBConstructor(cmp ssdb.Comparator, t *testing.T) constructorInterface {
 }
 
 func (d *dbConstructor) finishImpl(options *ssdb.Options, data kvMap) error {
-	d.dbInterface.Close()
-	d.dbInterface = nil
+	if d.dbInterface != nil {
+		d.dbInterface.Close()
+		d.dbInterface = nil
+	}
 	d.newDB()
 	for _, key := range data.s {
 		batch := ssdb.NewWriteBatch()
@@ -473,6 +480,7 @@ func (h *harness) testForwardScan(keys []string, data kvMap) {
 		iter.Next()
 	}
 	util.AssertFalse(iter.Valid(), "iter.Valid()", h.t)
+	iter.Close()
 }
 
 func (h *harness) testBackwardScan(keys []string, data kvMap) {
@@ -484,6 +492,7 @@ func (h *harness) testBackwardScan(keys []string, data kvMap) {
 		iter.Prev()
 	}
 	util.AssertFalse(iter.Valid(), "iter.Valid()", h.t)
+	iter.Close()
 }
 
 func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) {
@@ -558,6 +567,7 @@ func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) 
 			util.AssertEqual(kvToString(data, index), iteratorToString(iter), "seekToLast", h.t)
 		}
 	}
+	iter.Close()
 }
 
 func kvToString(data kvMap, i int) string {
@@ -602,8 +612,15 @@ func (h *harness) db() ssdb.DB {
 	return h.constructor.db()
 }
 
+func (h *harness) finish() {
+	if h.constructor != nil {
+		h.constructor.finalize()
+	}
+}
+
 func TestEmpty(t *testing.T) {
 	h := newHarness(t)
+	defer h.finish()
 	var rnd *util.Random
 	for _, args := range testArgList {
 		h.init(&args)
@@ -614,6 +631,7 @@ func TestEmpty(t *testing.T) {
 
 func TestSimpleEmptyKey(t *testing.T) {
 	h := newHarness(t)
+	defer h.finish()
 	var rnd *util.Random
 	for _, args := range testArgList {
 		h.init(&args)
@@ -625,6 +643,7 @@ func TestSimpleEmptyKey(t *testing.T) {
 
 func TestSimpleSingle(t *testing.T) {
 	h := newHarness(t)
+	defer h.finish()
 	var rnd *util.Random
 	for _, args := range testArgList {
 		h.init(&args)
@@ -636,6 +655,7 @@ func TestSimpleSingle(t *testing.T) {
 
 func TestSimpleMulti(t *testing.T) {
 	h := newHarness(t)
+	defer h.finish()
 	var rnd *util.Random
 	for _, args := range testArgList {
 		h.init(&args)
@@ -649,6 +669,7 @@ func TestSimpleMulti(t *testing.T) {
 
 func TestSimpleSpecialKey(t *testing.T) {
 	h := newHarness(t)
+	defer h.finish()
 	var rnd *util.Random
 	for _, args := range testArgList {
 		h.init(&args)
@@ -660,6 +681,7 @@ func TestSimpleSpecialKey(t *testing.T) {
 
 func TestRandomized(t *testing.T) {
 	h := newHarness(t)
+	defer h.finish()
 	var rnd *util.Random
 	for i, args := range testArgList {
 		h.init(&args)
@@ -683,6 +705,7 @@ func TestRandomized(t *testing.T) {
 
 func TestRandomizedLongDB(t *testing.T) {
 	h := newHarness(t)
+	defer h.finish()
 	rnd := util.NewRandom(uint32(util.RandomSeed()))
 	h.init(&testArgs{dbTestType, false, 16})
 	numEntries := 100000
@@ -724,6 +747,7 @@ func TestSimple(t *testing.T) {
 		fmt.Fprintf(os.Stderr, "key: '%s' -> '%s'\n", iter.Key(), iter.Value())
 		iter.Next()
 	}
-	iter.Finalize()
+	iter.Close()
 	memtable.unref()
+	memtable.release()
 }
