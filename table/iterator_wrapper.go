@@ -19,6 +19,9 @@ func (w *iteratorWrapper) iterator() ssdb.Iterator {
 }
 
 func (w *iteratorWrapper) set(iter ssdb.Iterator) {
+	if w.iter != nil {
+		w.iter.Close()
+	}
 	w.iter = iter
 	if iter == nil {
 		w.valid = false
@@ -77,6 +80,8 @@ func (w *iteratorWrapper) update() {
 	}
 }
 
-func (w *iteratorWrapper) finalize() {
-	w.iter.Finalize()
+func (w *iteratorWrapper) close() {
+	if w.iter != nil {
+		w.iter.Close()
+	}
 }
