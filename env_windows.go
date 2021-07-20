@@ -3,8 +3,10 @@ package ssdb
 import (
 	"errors"
 	"os"
+	"path"
 	"reflect"
 	"runtime"
+	"strconv"
 	"syscall"
 	"unsafe"
 )
@@ -26,11 +28,19 @@ func DefaultEnv() Env {
 				bgStarted:   0,
 				workItemCh:  make(chan *backgroundWorkItem, 2*runtime.NumCPU()),
 				stopped:     make(chan struct{}, 1),
-				mmapLimiter: newLimiter(int64(maxMmap())),
+				mmapLimiter: newLimiter(maxMmap()),
 			},
 		}
 	})
 	return e
+}
+
+func (f *writableFile) Sync() (err error) {
+	if err = f.flushBuffer(); err != nil {
+		return
+	}
+	err = syncFD(f.file, f.filename)
+	return
 }
 
 type windowsEnv struct {
@@ -148,6 +158,16 @@ func lockFileEx(h syscall.Handle, flags, reserved, low, high uint32, ol *syscall
 	return
 }
 
+func (e *windowsEnv) GetTestDirectory() (string, error) {
+	result, ok := os.LookupEnv("TEST_TMPDIR")
+	if result == "" || !ok {
+		result = path.Join(os.TempDir(), "ssdbtest-"+strconv.Itoa(os.Getuid()))
+	}
+	// The CreateDir status is ignored because the directory may already exist.
+	_ = e.CreateDir(result)
+	return result, nil
+}
+
 func (e *windowsEnv) NewRandomAccessFile(name string) (f RandomAccessFile, err error) {
 	var file *os.File
 	if file, err = os.OpenFile(name, os.O_RDONLY, 0); err != nil {
@@ -208,7 +228,7 @@ func (f *windowsRandomAccessFile) Read(b []byte, offset int64) (result []byte, n
 	return
 }
 
-func (f *windowsRandomAccessFile) Finalize() {
+func (f *windowsRandomAccessFile) Close() {
 	_ = f.file.Close()
 }
 
@@ -245,7 +265,7 @@ func (f *windowsMmapReadableFile) Read(b []byte, offset int64) (result []byte, n
 	return
 }
 
-func (f *windowsMmapReadableFile) Finalize() {
-	_ = syscall.UnmapViewOfFile(uintptr(pointer))
+func (f *windowsMmapReadableFile) Close() {
+	_ = syscall.UnmapViewOfFile(uintptr(f.pointer))
 	f.limiter.release()
 }

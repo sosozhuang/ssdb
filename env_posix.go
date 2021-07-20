@@ -3,6 +3,7 @@
 package ssdb
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"runtime"
@@ -25,6 +26,17 @@ func DefaultEnv() Env {
 		}
 	})
 	return e
+}
+
+func (f *writableFile) Sync() (err error) {
+	if err = f.syncDirIfManifest(); err != nil {
+		return
+	}
+	if err = f.flushBuffer(); err != nil {
+		return
+	}
+	err = syncFD(f.file, f.filename)
+	return
 }
 
 func maxOpenFiles() int {
@@ -150,6 +162,16 @@ func (e *posixEnv) NewRandomAccessFile(name string) (f RandomAccessFile, err err
 	return
 }
 
+func (e *posixEnv) GetTestDirectory() (string, error) {
+	result, ok := os.LookupEnv("TEST_TMPDIR")
+	if result == "" || !ok {
+		result = fmt.Sprintf("/tmp/ssdbtest-%d", os.Geteuid())
+	}
+	// The CreateDir status is ignored because the directory may already exist.
+	_ = e.CreateDir(result)
+	return result, nil
+}
+
 type posixRandomAccessFile struct {
 	file           *os.File
 	hasPermanentFD bool
@@ -195,7 +217,7 @@ func (f *posixRandomAccessFile) Read(b []byte, offset int64) (result []byte, n i
 	return
 }
 
-func (f *posixRandomAccessFile) Finalize() {
+func (f *posixRandomAccessFile) Close() {
 	if f.hasPermanentFD {
 		if f.file == nil {
 			panic("posixRandomAccessFile: file == nil")
@@ -232,7 +254,7 @@ func (f *posixMmapReadableFile) Read(b []byte, offset int64) (result []byte, n i
 	return
 }
 
-func (f *posixMmapReadableFile) Finalize() {
-	syscall.Munmap(f.data)
+func (f *posixMmapReadableFile) Close() {
+	_ = syscall.Munmap(f.data)
 	f.limiter.release()
 }

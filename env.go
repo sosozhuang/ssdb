@@ -1,8 +1,6 @@
 package ssdb
 
 import (
-	"bytes"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -34,7 +32,7 @@ type Env interface {
 	Schedule(function func(interface{}), arg interface{})
 	StartThread(function func(interface{}), arg interface{})
 	GetTestDirectory() (string, error)
-	NewLogger(name string) (*log.Logger, error)
+	NewLogger(name string) (*log.Logger, func(), error)
 	NowMicros() uint64
 	SleepForMicroseconds(micros int)
 }
@@ -50,7 +48,7 @@ type SequentialFile interface {
 	// REQUIRES: External synchronization
 	Read(b []byte) ([]byte, int, error)
 	Skip(n uint64) error
-	Finalizer
+	Closer
 }
 
 type RandomAccessFile interface {
@@ -64,7 +62,7 @@ type RandomAccessFile interface {
 	//
 	// Safe for concurrent use by multiple threads.
 	Read(b []byte, offset int64) ([]byte, int, error)
-	Finalizer
+	Closer
 }
 
 type WritableFile interface {
@@ -72,16 +70,9 @@ type WritableFile interface {
 	Close() error
 	Flush() error
 	Sync() error
-	Finalizer
 }
 
 type FileLock interface {
-}
-
-func Log(infoLog *log.Logger, format string, v ...interface{}) {
-	if infoLog != nil {
-		infoLog.Printf(format, v...)
-	}
 }
 
 func WriteStringToFile(env Env, data string, name string) error {
@@ -103,8 +94,9 @@ func doWriteBytesToFile(env Env, data string, name string, shouldSync bool) erro
 	}
 	if err == nil {
 		err = file.Close()
+	} else {
+		_ = file.Close()
 	}
-	file.Finalize()
 	if err != nil {
 		_ = env.DeleteFile(name)
 	}
@@ -128,7 +120,7 @@ func ReadFileToString(env Env, name string) (string, error) {
 		}
 		data.Write(r)
 	}
-	file.Finalize()
+	file.Close()
 	return data.String(), err
 }
 
@@ -273,9 +265,7 @@ func (e *env) Schedule(function func(interface{}), arg interface{}) {
 
 func (e *env) backgroundRoutine() {
 	e.wg.Add(1)
-	defer func() {
-		e.wg.Done()
-	}()
+	defer e.wg.Done()
 	for {
 		select {
 		case <-e.stopped:
@@ -290,20 +280,17 @@ func (e *env) StartThread(function func(interface{}), arg interface{}) {
 	go function(arg)
 }
 
-func (e *env) GetTestDirectory() (string, error) {
-	result, ok := os.LookupEnv("TEST_TMPDIR")
-	if result == "" || !ok {
-		buf := bytes.NewBufferString("")
-		fmt.Fprintf(buf, "/tmp/ssdbtest-%d", os.Geteuid())
-		result = buf.String()
+func (e *env) NewLogger(name string) (l *log.Logger, close func(), err error) {
+	var f *os.File
+	if f, err = os.OpenFile(name, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); err != nil {
+		close = func() {}
+		return
 	}
-	// The CreateDir status is ignored because the directory may already exist.
-	_ = e.CreateDir(result)
-	return result, nil
-}
-
-func (e *env) NewLogger(name string) (*log.Logger, error) {
-	return log.New(os.Stdout, "", log.LstdFlags), nil
+	l = log.New(f, "", log.LstdFlags)
+	close = func() {
+		_ = f.Close()
+	}
+	return
 }
 
 func (e *env) NowMicros() uint64 {
@@ -368,7 +355,7 @@ func (f *sequentialFile) Skip(n uint64) error {
 	return nil
 }
 
-func (f *sequentialFile) Finalize() {
+func (f *sequentialFile) Close() {
 	_ = f.file.Close()
 }
 
@@ -445,11 +432,13 @@ func (f *writableFile) Append(data []byte) (err error) {
 }
 
 func (f *writableFile) Close() (err error) {
-	err = f.flushBuffer()
-	if e := f.file.Close(); e != nil && err == nil {
-		err = envError(f.filename, e)
+	if f.file != nil {
+		err = f.flushBuffer()
+		if e := f.file.Close(); e != nil && err == nil {
+			err = envError(f.filename, e)
+		}
+		f.file = nil
 	}
-	f.file = nil
 	return
 }
 
@@ -457,22 +446,11 @@ func (f *writableFile) Flush() error {
 	return f.flushBuffer()
 }
 
-func (f *writableFile) Sync() (err error) {
-	if err = f.syncIfManifest(); err != nil {
-		return
-	}
-	if err = f.flushBuffer(); err != nil {
-		return
-	}
-	err = syncFD(f.file, f.filename)
-	return
-}
-
-func (f *writableFile) Finalize() {
-	if f.file != nil {
-		_ = f.Close()
-	}
-}
+//func (f *writableFile) Finalize() {
+//	if f.file != nil {
+//		_ = f.Close()
+//	}
+//}
 
 func (f *writableFile) flushBuffer() error {
 	err := f.writeUnbuffered(f.buf[:f.pos])
@@ -497,7 +475,7 @@ func (f *writableFile) writeUnbuffered(data []byte) error {
 	return nil
 }
 
-func (f *writableFile) syncIfManifest() error {
+func (f *writableFile) syncDirIfManifest() error {
 	if !f.isManifest {
 		return nil
 	}
