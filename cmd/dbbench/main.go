@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/golang/snappy"
 	"os"
-	"runtime"
 	"runtime/pprof"
 	"ssdb"
 	"ssdb/db"
@@ -296,7 +295,7 @@ func (b *benchmark) finish() {
 
 func (b *benchmark) printHeader() {
 	const keySize = 16
-	b.printEnvironment()
+	printEnvironment()
 	fmt.Fprintf(os.Stdout, "Keys:       %d bytes each\n", keySize)
 	fmt.Fprintf(os.Stdout, "Values:     %d bytes each (%d bytes after compression)\n", flagsValueSize, int64(float64(flagsValueSize)*flagsCompressionRatio+0.5))
 	fmt.Fprintf(os.Stdout, "Entries:    %d\n", b.num)
@@ -305,11 +304,11 @@ func (b *benchmark) printHeader() {
 	fmt.Fprintf(os.Stdout, "------------------------------------------------\n")
 }
 
-func (b *benchmark) printEnvironment() {
+func printEnvironment() {
 	fmt.Fprintf(os.Stderr, "SSDB:       version %d.%d\n", ssdb.MajorVersion, ssdb.MinorVersion)
 	now := time.Now()
 	fmt.Fprintf(os.Stderr, "Date:       %s\n", now.String())
-	fmt.Fprintf(os.Stderr, "CPU:        %d\n", runtime.NumCPU())
+	printCPUInfo()
 }
 
 func (b *benchmark) run() {
@@ -354,7 +353,7 @@ func (b *benchmark) run() {
 			b.num /= 1000
 			b.writeOptions.Sync = true
 			method = b.writeRandom
-		case "fill100k":
+		case "fill100K":
 			freshDB = true
 			b.num /= 1000
 			b.valueSize = 100 * 1000
