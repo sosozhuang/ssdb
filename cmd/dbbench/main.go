@@ -786,44 +786,42 @@ func main() {
 	flagsBlockSize = options.BlockSize
 	flagsOpenFiles = options.MaxOpenFiles
 	var (
-		d    float64
-		n    int
-		junk byte
-		err  error
+		d     float64
+		value int
+		junk  byte
+		n     int
 	)
 	for _, arg := range os.Args[1:] {
 		if strings.HasPrefix(arg, "--benchmarks=") {
 			flagsBenchmarks = strings.Split(strings.TrimPrefix(arg, "--benchmarks="), ",")
-		} else if _, err = fmt.Sscanf(arg, "--compression_ratio=%f%c", &d, &junk); err == nil {
+		} else if n, _ = fmt.Sscanf(arg, "--compression_ratio=%f%c", &d, &junk); n == 1 {
 			flagsCompressionRatio = d
-		} else if _, err = fmt.Sscanf(arg, "--histogram=%d%c", &n, &junk); err == nil && (n == 0 || n == 1) {
-			flagsHistogram = n == 1
-		} else if _, err = fmt.Sscanf(arg, "--use_existing_db=%d%c", &n, &junk); err == nil && (n == 0 || n == 1) {
-			flagsUseExistingDB = n == 1
-		} else if _, err = fmt.Sscanf(arg, "--reuse_logs=%d%c", &n, &junk); err == nil && (n == 0 || n == 1) {
-			flagsReuseLogs = n == 1
-		} else if _, err = fmt.Sscanf(arg, "--num=%d%c", &n, &junk); err == nil {
-			flagsNum = n
-		} else if _, err = fmt.Sscanf(arg, "--reads=%d%c", &n, &junk); err == nil {
-			flagsReads = n
-		} else if _, err = fmt.Sscanf(arg, "--threads=%d%c", &n, &junk); err == nil {
-			flagsThreads = n
-		} else if _, err = fmt.Sscanf(arg, "--value_size=%d%c", &n, &junk); err == nil {
-			flagsValueSize = n
-		} else if _, err = fmt.Sscanf(arg, "--write_buffer_size=%d%c", &n, &junk); err == nil {
-			flagsWriteBufferSize = n
-		} else if _, err = fmt.Sscanf(arg, "--max_file_size=%d%c", &n, &junk); err == nil {
-			flagsMaxFileSize = n
-		} else if _, err = fmt.Sscanf(arg, "--max_file_size=%d%c", &n, &junk); err == nil {
-			flagsMaxFileSize = n
-		} else if _, err = fmt.Sscanf(arg, "--block_size=%d%c", &n, &junk); err == nil {
-			flagsBlockSize = n
-		} else if _, err = fmt.Sscanf(arg, "--cache_size=%d%c", &n, &junk); err == nil {
-			flagsCacheSize = n
-		} else if _, err = fmt.Sscanf(arg, "--bloom_bits=%d%c", &n, &junk); err == nil {
-			flagsBloomBits = n
-		} else if _, err = fmt.Sscanf(arg, "--open_files=%d%c", &n, &junk); err == nil {
-			flagsOpenFiles = n
+		} else if n, _ = fmt.Sscanf(arg, "--histogram=%d%c", &value, &junk); n == 1 && (value == 0 || value == 1) {
+			flagsHistogram = value == 1
+		} else if n, _ = fmt.Sscanf(arg, "--use_existing_db=%d%c", &value, &junk); n == 1 && (value == 0 || value == 1) {
+			flagsUseExistingDB = value == 1
+		} else if n, _ = fmt.Sscanf(arg, "--reuse_logs=%d%c", &value, &junk); n == 1 && (value == 0 || value == 1) {
+			flagsReuseLogs = value == 1
+		} else if n, _ = fmt.Sscanf(arg, "--num=%d%c", &value, &junk); n == 1 {
+			flagsNum = value
+		} else if n, _ = fmt.Sscanf(arg, "--reads=%d%c", &value, &junk); n == 1 {
+			flagsReads = value
+		} else if n, _ = fmt.Sscanf(arg, "--threads=%d%c", &value, &junk); n == 1 {
+			flagsThreads = value
+		} else if n, _ = fmt.Sscanf(arg, "--value_size=%d%c", &value, &junk); n == 1 {
+			flagsValueSize = value
+		} else if n, _ = fmt.Sscanf(arg, "--write_buffer_size=%d%c", &value, &junk); n == 1 {
+			flagsWriteBufferSize = value
+		} else if n, _ = fmt.Sscanf(arg, "--max_file_size=%d%c", &value, &junk); n == 1 {
+			flagsMaxFileSize = value
+		} else if n, _ = fmt.Sscanf(arg, "--block_size=%d%c", &value, &junk); n == 1 {
+			flagsBlockSize = value
+		} else if n, _ = fmt.Sscanf(arg, "--cache_size=%d%c", &value, &junk); n == 1 {
+			flagsCacheSize = value
+		} else if n, _ = fmt.Sscanf(arg, "--bloom_bits=%d%c", &value, &junk); n == 1 {
+			flagsBloomBits = value
+		} else if n, _ = fmt.Sscanf(arg, "--open_files=%d%c", &value, &junk); n == 1 {
+			flagsOpenFiles = value
 		} else if strings.HasPrefix(arg, "--db=") {
 			flagsDB = strings.TrimPrefix(arg, "--db=")
 		} else {
