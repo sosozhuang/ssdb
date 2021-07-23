@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"ssdb"
 	"ssdb/util"
+	"unsafe"
 )
 
 type HandleResult func(interface{}, []byte, []byte) error
@@ -32,20 +33,20 @@ func (t *table) ApproximateOffsetOf(key []byte) (result uint64) {
 		handle := newBlockHandle()
 		input := indexIter.Value()
 		if err := handle.decodeFrom(&input); err == nil {
-			result = handle.getOffset()
+			result = handle.offset
 		} else {
 			// Strange: we can't decode the block handle in the index block.
 			// We'll just return the offset of the metaindex block, which is
 			// close to the whole file size for this case.
-			result = t.rep.metaIndexHandle.getOffset()
+			result = t.rep.metaIndexHandle.offset
 		}
 	} else {
 		// key is past the last key in the file.  Approximate the offset
 		// by returning the offset of the metaindex block (which is
 		// right near the end of the file).
-		result = t.rep.metaIndexHandle.getOffset()
+		result = t.rep.metaIndexHandle.offset
 	}
-	indexIter.Finalize()
+	indexIter.Close()
 	return
 }
 
@@ -61,11 +62,8 @@ func blockReader(i interface{}, options *ssdb.ReadOptions, indexValue []byte) (i
 		var contents *blockContents
 		if blockCache != nil {
 			key := make([]byte, 16)
-			var b [8]byte
-			util.EncodeFixed64(&b, table.rep.cacheID)
-			copy(key, b[:])
-			util.EncodeFixed64(&b, handle.getOffset())
-			copy(key[8:], b[:])
+			util.EncodeFixed64((*[8]byte)(unsafe.Pointer(&key[0])), table.rep.cacheID)
+			util.EncodeFixed64((*[8]byte)(unsafe.Pointer(&key[8])), handle.offset)
 			cacheHandle = blockCache.Lookup(key)
 			if cacheHandle != nil {
 				bb = (blockCache.Value(cacheHandle)).(*block)
@@ -104,21 +102,21 @@ func (t *table) InternalGet(options *ssdb.ReadOptions, key []byte, arg interface
 		handleValue := iiter.Value()
 		filter := t.rep.filter
 		handle := newBlockHandle()
-		if filter != nil && handle.decodeFrom(&handleValue) == nil && !filter.keyMayMatch(handle.getOffset(), key) {
+		if filter != nil && handle.decodeFrom(&handleValue) == nil && !filter.keyMayMatch(handle.offset, key) {
 		} else {
 			blockIter := blockReader(t, options, iiter.Value())
 			blockIter.Seek(key)
 			if blockIter.Valid() {
 				_ = result(arg, blockIter.Key(), blockIter.Value())
-				err = blockIter.Status()
-				blockIter.Finalize()
 			}
+			err = blockIter.Status()
+			blockIter.Close()
 		}
 	}
 	if err == nil {
 		err = iiter.Status()
 	}
-	iiter.Finalize()
+	iiter.Close()
 	return
 }
 
@@ -142,8 +140,8 @@ func (t *table) readMeta(footer *footer) {
 	if iter.Valid() && bytes.Compare(iter.Key(), key) == 0 {
 		t.readFilter(iter.Value())
 	}
-	iter.Finalize()
-	meta.finalize()
+	iter.Close()
+	meta.release()
 }
 
 func (t *table) readFilter(filterHandleValue []byte) {
@@ -168,16 +166,16 @@ func (t *table) readFilter(filterHandleValue []byte) {
 	t.rep.filter = newFilterBlockReader(t.rep.options.FilterPolicy, block.data)
 }
 
-func (t *table) Finalize() {
-	t.rep.finalize()
+func (t *table) Close() {
+	t.rep.release()
 }
 
-func deleteBlock(arg, ignored interface{}) {
-	arg.(*block).finalize()
+func deleteBlock(arg, _ interface{}) {
+	arg.(*block).release()
 }
 
-func deleteCachedBlock(key []byte, value interface{}) {
-	value.(*block).finalize()
+func deleteCachedBlock(_ []byte, value interface{}) {
+	value.(*block).release()
 }
 
 func releaseBlock(arg, h interface{}) {
@@ -241,8 +239,8 @@ type tableRep struct {
 	indexBlock      *block
 }
 
-func (r *tableRep) finalize() {
+func (r *tableRep) release() {
 	r.filter = nil
 	r.filterData = nil
-	r.indexBlock.finalize()
+	r.indexBlock.release()
 }
