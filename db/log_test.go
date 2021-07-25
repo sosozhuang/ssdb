@@ -202,8 +202,8 @@ func (d *logStringDest) Sync() error {
 	return nil
 }
 
-func (d *logStringDest) Finalize() {
-}
+//func (d *logStringDest) Finalize() {
+//}
 
 type logStringSource struct {
 	contents        []byte
@@ -248,7 +248,7 @@ func (s *logStringSource) Skip(n uint64) error {
 	return nil
 }
 
-func (s *logStringSource) Finalize() {
+func (s *logStringSource) Close() {
 }
 
 type reportCollector struct {

@@ -40,7 +40,7 @@ func (b *block) numRestarts() uint32 {
 	return util.DecodeFixed32(b.data[b.size-uint32Size:])
 }
 
-func (b *block) finalize() {
+func (b *block) release() {
 	if b.owned {
 		b.data = nil
 	}
@@ -130,7 +130,7 @@ func newBlockIterator(comparator ssdb.Comparator, data []byte, restarts uint32, 
 		numRestarts:  numRestarts,
 		current:      restarts,
 		restartIndex: numRestarts,
-		key:          make([]byte, 0),
+		//key:          make([]byte, 0),
 	}
 }
 

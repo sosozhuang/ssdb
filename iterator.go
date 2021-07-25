@@ -13,5 +13,5 @@ type Iterator interface {
 	Value() []byte
 	Status() error
 	RegisterCleanUp(function CleanUpFunction, arg1, arg2 interface{})
-	Finalizer
+	Closer
 }

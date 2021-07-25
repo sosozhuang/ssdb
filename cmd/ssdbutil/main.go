@@ -67,5 +67,5 @@ func (p *stdoutPrinter) Sync() error {
 	return nil
 }
 
-func (p *stdoutPrinter) Finalize() {
-}
+//func (p *stdoutPrinter) Finalize() {
+//}

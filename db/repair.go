@@ -36,6 +36,7 @@ type repairer struct {
 	icmp           internalKeyComparator
 	iPolicy        internalFilterPolicy
 	options        ssdb.Options
+	closeFunc      func()
 	ownsInfoLog    bool
 	ownsCache      bool
 	tableCache     *tableCache
@@ -58,21 +59,22 @@ func newRepairer(dbName string, options *ssdb.Options) *repairer {
 		tables:         nil,
 		nextFileNumber: 1,
 	}
-	r.options = sanitizeOptions(dbName, &r.icmp, &r.iPolicy, *options)
+	r.options, r.closeFunc = sanitizeOptions(dbName, &r.icmp, &r.iPolicy, *options)
 	r.ownsInfoLog = r.options.InfoLog != options.InfoLog
 	r.ownsCache = r.options.BlockCache != options.BlockCache
 	r.tableCache = newTableCache(r.dbName, &r.options, 10)
 	return r
 }
 
-func (r *repairer) finalize() {
-	r.tableCache.finalize()
+func (r *repairer) finish() {
+	r.tableCache.clear()
 	if r.ownsInfoLog {
 		r.options.InfoLog = nil
 	}
 	if r.ownsCache {
-		r.options.BlockCache.Finalize()
+		r.options.BlockCache.Clear()
 	}
+	r.closeFunc()
 }
 
 func (r *repairer) run() error {
@@ -87,7 +89,7 @@ func (r *repairer) run() error {
 		for _, t := range r.tables {
 			bytes += t.meta.fileSize
 		}
-		ssdb.Log(r.options.InfoLog, "**** Repaired ssdb %s; "+
+		r.options.InfoLog.Printf("**** Repaired ssdb %s; "+
 			"recovered %d files; %d bytes. "+
 			"Some data may have been lost. "+
 			"****", r.dbName, len(r.tables), bytes)
@@ -136,7 +138,7 @@ func (r *repairer) convertLogFilesToTables() {
 	for _, l := range r.logs {
 		logName := logFileName(r.dbName, l)
 		if err := r.convertLogToTable(l); err != nil {
-			ssdb.Log(r.options.InfoLog, "Log #%d: ignoring conversion error: %v.\n", l, err)
+			r.options.InfoLog.Printf("Log #%d: ignoring conversion error: %v.\n", l, err)
 		}
 		r.archiveFile(logName)
 	}
@@ -149,7 +151,7 @@ type repairLogReporter struct {
 }
 
 func (r *repairLogReporter) corruption(bytes int, err error) {
-	ssdb.Log(r.infoLog, "Log #%d: dropping %d bytes; %v.\n", r.logNum, bytes, err)
+	r.infoLog.Printf("Log #%d: dropping %d bytes; %v.\n", r.logNum, bytes, err)
 }
 
 func (r *repairer) convertLogToTable(log uint64) error {
@@ -166,7 +168,7 @@ func (r *repairer) convertLogToTable(log uint64) error {
 	reader := newLogReader(lfile, &reporter, false, 0)
 	var record []byte
 	batch := ssdb.NewWriteBatch()
-	mem := NewMemTable(&r.icmp)
+	mem := newMemTable(&r.icmp)
 	mem.ref()
 	counter := 0
 	ok := true
@@ -179,25 +181,25 @@ func (r *repairer) convertLogToTable(log uint64) error {
 		if err = insertInto(batch, mem); err == nil {
 			counter += batch.(writeBatchInternal).Count()
 		} else {
-			ssdb.Log(r.options.InfoLog, "Log #%d: ignoring %v.\n", log, err)
+			r.options.InfoLog.Printf("Log #%d: ignoring %v.\n", log, err)
 			err = nil
 		}
 	}
-	lfile.Finalize()
+	lfile.Close()
 	meta := newFileMetaData()
 	meta.number = r.nextFileNumber
 	r.nextFileNumber++
 	iter := mem.newIterator()
 	err = buildTable(r.dbName, r.env, &r.options, r.tableCache, iter, meta)
-	iter.Finalize()
+	iter.Close()
 	mem.unref()
-	mem.finalize()
+	mem.release()
 	if err == nil {
 		if meta.fileSize > 0 {
 			r.tableNumbers = append(r.tableNumbers, meta.number)
 		}
 	}
-	ssdb.Log(r.options.InfoLog, "Log #%d: %d ops saved to Table #%d %v.\n", log, counter, meta.number, err)
+	r.options.InfoLog.Printf("Log #%d: %d ops saved to Table #%d %v.\n", log, counter, meta.number, err)
 	return err
 }
 
@@ -230,7 +232,7 @@ func (r *repairer) scanTable(number uint64) {
 	if err != nil {
 		r.archiveFile(tableFileName(r.dbName, number))
 		r.archiveFile(sstTableFileName(r.dbName, number))
-		ssdb.Log(r.options.InfoLog, "Table #%d: dropped: %v.\n", t.meta.number, err)
+		r.options.InfoLog.Printf("Table #%d: dropped: %v.\n", t.meta.number, err)
 		return
 	}
 	counter := 0
@@ -241,7 +243,7 @@ func (r *repairer) scanTable(number uint64) {
 	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 		if !parseInternalKey(key, &parsed) {
-			ssdb.Log(r.options.InfoLog, "Table #%d: unparsable key %s.\n", t.meta.number, util.EscapeString(key))
+			r.options.InfoLog.Printf("Table #%d: unparsable key %s.\n", t.meta.number, util.EscapeString(key))
 			continue
 		}
 		counter++
@@ -257,8 +259,8 @@ func (r *repairer) scanTable(number uint64) {
 	if iter.Status() != nil {
 		err = iter.Status()
 	}
-	iter.Finalize()
-	ssdb.Log(r.options.InfoLog, "Table #%d: %d entries %v.\n", t.meta.number, counter, err)
+	iter.Close()
+	r.options.InfoLog.Printf("Table #%d: %d entries %v.\n", t.meta.number, counter, err)
 	if err == nil {
 		r.tables = append(r.tables, t)
 	} else {
@@ -280,7 +282,7 @@ func (r *repairer) repairTable(src string, t tableInfo) {
 		builder.Add(iter.Key(), iter.Value())
 		counter++
 	}
-	iter.Finalize()
+	iter.Close()
 	r.archiveFile(src)
 	if counter == 0 {
 		builder.Abandon()
@@ -289,17 +291,18 @@ func (r *repairer) repairTable(src string, t tableInfo) {
 			t.meta.fileSize = builder.FileSize()
 		}
 	}
-	builder.Finalize()
+	builder.Close()
 	if err == nil {
 		err = file.Close()
+	} else {
+		_ = file.Close()
 	}
-	file.Finalize()
 	file = nil
 
 	if counter > 0 && err == nil {
 		orig := tableFileName(r.dbName, t.meta.number)
 		if err = r.env.RenameFile(copyFileName, orig); err == nil {
-			ssdb.Log(r.options.InfoLog, "Table #%d: %d entries repaired.\n", t.meta.number, counter)
+			r.options.InfoLog.Printf("Table #%d: %d entries repaired.\n", t.meta.number, counter)
 			r.tables = append(r.tables, t)
 		}
 	}
@@ -334,8 +337,9 @@ func (r *repairer) writeDescriptor() error {
 	err = l.addRecord(record)
 	if err == nil {
 		err = file.Close()
+	} else {
+		_ = file.Close()
 	}
-	file.Finalize()
 	file = nil
 	if err != nil {
 		_ = r.env.DeleteFile(tmp)
@@ -371,9 +375,11 @@ func (r *repairer) archiveFile(fname string) {
 	}
 	newFile := b.String()
 	err := r.env.RenameFile(fname, newFile)
-	ssdb.Log(r.options.InfoLog, "Archiving %s: %v.\n", fname, err)
+	r.options.InfoLog.Printf("Archiving %s: %v.\n", fname, err)
 }
 
 func Repair(dbName string, options *ssdb.Options) error {
-	return newRepairer(dbName, options).run()
+	repairer := newRepairer(dbName, options)
+	defer repairer.finish()
+	return repairer.run()
 }

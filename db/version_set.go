@@ -25,7 +25,7 @@ func expandedCompactionByteSizeLimit(options *ssdb.Options) int64 {
 	return int64(25 * targetFileSize(options))
 }
 
-func maxBytesForLevel(options *ssdb.Options, level int) float64 {
+func maxBytesForLevel(_ *ssdb.Options, level int) float64 {
 	result := 10. * 1048576.0
 	for level > 1 {
 		result *= 10
@@ -34,7 +34,7 @@ func maxBytesForLevel(options *ssdb.Options, level int) float64 {
 	return result
 }
 
-func maxFileSizeForLevel(options *ssdb.Options, level int) uint64 {
+func maxFileSizeForLevel(options *ssdb.Options, _ int) uint64 {
 	return uint64(targetFileSize(options))
 }
 
@@ -74,7 +74,7 @@ func newVersion(vset *versionSet) *version {
 	return v
 }
 
-func (v *version) finalize() {
+func (v *version) release() {
 	if v.refs != 0 {
 		panic("version: refs != 0")
 	}
@@ -293,7 +293,7 @@ func (v *version) unref() {
 	}
 	v.refs--
 	if v.refs == 0 {
-		v.finalize()
+		v.release()
 	}
 }
 
@@ -607,14 +607,14 @@ func newVersionSet(dbName string, options *ssdb.Options, tableCache *tableCache,
 	return s
 }
 
-func (s *versionSet) finalize() {
+func (s *versionSet) close() {
 	s.current.unref()
 	if s.dummyVersions.next != s.dummyVersions {
 		panic("versionSet: dummyVersions.next != &dummyVersions")
 	}
 	s.descriptorLog = nil
 	if s.descriptorFile != nil {
-		s.descriptorFile.Finalize()
+		_ = s.descriptorFile.Close()
 	}
 }
 
@@ -657,8 +657,8 @@ func (s *versionSet) logAndApply(edit *versionEdit, mu *sync.Mutex) (err error) 
 	builder := newVersionSetBuilder(s, s.current)
 	builder.apply(edit)
 	builder.saveTo(v)
-	builder.finalize()
-	s.finalizeVersion(v)
+	builder.release()
+	s.finalize(v)
 
 	var newManifestFile string
 	if s.descriptorLog == nil {
@@ -681,7 +681,7 @@ func (s *versionSet) logAndApply(edit *versionEdit, mu *sync.Mutex) (err error) 
 			err = s.descriptorFile.Sync()
 		}
 		if err != nil {
-			ssdb.Log(s.options.InfoLog, "MANIFEST write: %s.\n", err)
+			s.options.InfoLog.Printf("MANIFEST write: %s.\n", err)
 		}
 	}
 	if err == nil && len(newManifestFile) != 0 {
@@ -694,9 +694,9 @@ func (s *versionSet) logAndApply(edit *versionEdit, mu *sync.Mutex) (err error) 
 		s.logNumber = edit.logNumber
 		s.prevLogNumber = edit.prevLogNumber
 	} else {
-		v.finalize()
+		v.release()
 		if len(newManifestFile) != 0 {
-			s.descriptorFile.Finalize()
+			_ = s.descriptorFile.Close()
 			s.descriptorLog = nil
 			s.descriptorFile = nil
 			_ = s.env.DeleteFile(newManifestFile)
@@ -709,7 +709,7 @@ type versionSetLogReporter struct {
 	err error
 }
 
-func (r *versionSetLogReporter) corruption(bytes int, err error) {
+func (r *versionSetLogReporter) corruption(_ int, err error) {
 	if r.err == nil {
 		r.err = err
 	}
@@ -777,7 +777,7 @@ func (s *versionSet) recover() (saveManifest bool, err error) {
 			haveLastSequence = true
 		}
 	}
-	file.Finalize()
+	file.Close()
 	file = nil
 	if err == nil {
 		if !haveNextFile {
@@ -798,19 +798,19 @@ func (s *versionSet) recover() (saveManifest bool, err error) {
 	if err == nil {
 		v := newVersion(s)
 		builder.saveTo(v)
-		s.finalizeVersion(v)
+		s.finalize(v)
 		s.appendVersion(v)
 		s.manifestFileNumber = nextFile
 		s.nextFileNumber = nextFile + 1
 		s.lastSequence = lastSequence
 		s.logNumber = logNumber
 		s.prevLogNumber = prevLogNumber
-		if s.reuseManifest(dscName, string(current)) {
+		if s.reuseManifest(dscName, current) {
 		} else {
 			saveManifest = true
 		}
 	}
-	builder.finalize()
+	builder.release()
 	return
 }
 
@@ -853,7 +853,7 @@ func (s *versionSet) markFileNumberUsed(number uint64) {
 	}
 }
 
-func (s *versionSet) finalizeVersion(v *version) {
+func (s *versionSet) finalize(v *version) {
 	bestLevel := -1
 	bestScore := float64(-1)
 
@@ -942,7 +942,7 @@ func (s *versionSet) approximateOffsetOf(v *version, ikey *internalKey) (result 
 				if tablePtr != nil {
 					result += tablePtr.ApproximateOffsetOf(ikey.encode())
 				}
-				iter.Finalize()
+				iter.Close()
 			}
 		}
 	}
@@ -1336,7 +1336,7 @@ func newVersionSetBuilder(vset *versionSet, base *version) *versionSetBuilder {
 	return b
 }
 
-func (b *versionSetBuilder) finalize() {
+func (b *versionSetBuilder) release() {
 	for level := 0; level < numLevels; level++ {
 		added := b.levels[level].addedFiles
 		toUnref := make([]*fileMetaData, 0, added.Len())
@@ -1456,10 +1456,6 @@ func (b *versionSetBuilder) maybeAddFile(v *version, level int, f *fileMetaData)
 	}
 }
 
-type levelSummaryStorage struct {
-	buffer [100]byte
-}
-
 type compaction struct {
 	level             int
 	maxOutputFileSize uint64
@@ -1488,7 +1484,7 @@ func newCompaction(options *ssdb.Options, level int) *compaction {
 	return c
 }
 
-func (c *compaction) finalize() {
+func (c *compaction) finish() {
 	if c != nil && c.inputVersion != nil {
 		c.inputVersion.unref()
 	}

@@ -88,71 +88,6 @@ func (t *stlLessThan) less(a, b string) bool {
 	return t.cmp.Compare([]byte(a), []byte(b)) < 0
 }
 
-type stringSink struct {
-	contents []byte
-}
-
-func newStringSink() *stringSink {
-	return &stringSink{contents: make([]byte, 0)}
-}
-
-func (s *stringSink) Append(data []byte) error {
-	s.contents = append(s.contents, data...)
-	return nil
-}
-
-func (s *stringSink) Close() error {
-	return nil
-}
-
-func (s *stringSink) Flush() error {
-	return nil
-}
-
-func (s *stringSink) Sync() error {
-	return nil
-}
-
-//func (s *stringSink) Finalize() {
-//}
-
-func (s *stringSink) getContents() []byte {
-	return s.contents
-}
-
-type stringSource struct {
-	contents []byte
-}
-
-func newStringSource(contents []byte) *stringSource {
-	s := &stringSource{
-		contents: make([]byte, len(contents)),
-	}
-	copy(s.contents, contents)
-	return s
-}
-
-func (s *stringSource) Read(b []byte, offset int64) (result []byte, n int, err error) {
-	if offset >= int64(len(s.contents)) {
-		err = util.InvalidArgumentError1("invalid read offset")
-		return
-	}
-	n = len(b)
-	if offset+int64(len(b)) > int64(len(s.contents)) {
-		n = int(int64(len(s.contents)) - offset)
-	}
-	copy(b, s.contents[offset:offset+int64(n)])
-	result = b[:n]
-	return
-}
-
-//func (s *stringSource) Finalize() {
-//}
-
-func (s *stringSource) size() int {
-	return len(s.contents)
-}
-
 type kvMap struct {
 	m  map[string]string
 	s  []string
@@ -306,7 +241,7 @@ func newKeyConvertingIterator(iter ssdb.Iterator) *keyConvertingIterator {
 type memTableConstructor struct {
 	*constructor
 	internalComparator *internalKeyComparator
-	memtable           *MemTable
+	memtable           *memTable
 }
 
 func newMemTableConstructor(cmp ssdb.Comparator, t *testing.T) *memTableConstructor {
@@ -314,14 +249,14 @@ func newMemTableConstructor(cmp ssdb.Comparator, t *testing.T) *memTableConstruc
 		internalComparator: newInternalKeyComparator(cmp),
 	}
 	m.constructor = newConstructor(cmp, m.finishImpl, m.finalize, t)
-	m.memtable = NewMemTable(m.internalComparator)
+	m.memtable = newMemTable(m.internalComparator)
 	m.memtable.ref()
 	return m
 }
 
-func (c *memTableConstructor) finishImpl(options *ssdb.Options, data kvMap) error {
+func (c *memTableConstructor) finishImpl(_ *ssdb.Options, data kvMap) error {
 	c.memtable.unref()
-	c.memtable = NewMemTable(c.internalComparator)
+	c.memtable = newMemTable(c.internalComparator)
 	c.memtable.ref()
 	seq := sequenceNumber(1)
 	for _, key := range data.s {
@@ -358,7 +293,7 @@ func newDBConstructor(cmp ssdb.Comparator, t *testing.T) constructorInterface {
 	return d
 }
 
-func (d *dbConstructor) finishImpl(options *ssdb.Options, data kvMap) error {
+func (d *dbConstructor) finishImpl(_ *ssdb.Options, data kvMap) error {
 	if d.dbInterface != nil {
 		d.dbInterface.Close()
 		d.dbInterface = nil
@@ -471,7 +406,7 @@ func (h *harness) test(rnd *util.Random) {
 	h.testRandomAccess(rnd, keys, data)
 }
 
-func (h *harness) testForwardScan(keys []string, data kvMap) {
+func (h *harness) testForwardScan(_ []string, data kvMap) {
 	iter := h.constructor.newIterator()
 	util.AssertFalse(iter.Valid(), "iter.Valid()", h.t)
 	iter.SeekToFirst()
@@ -483,7 +418,7 @@ func (h *harness) testForwardScan(keys []string, data kvMap) {
 	iter.Close()
 }
 
-func (h *harness) testBackwardScan(keys []string, data kvMap) {
+func (h *harness) testBackwardScan(_ []string, data kvMap) {
 	iter := h.constructor.newIterator()
 	util.AssertFalse(iter.Valid(), "iter.Valid()", h.t)
 	iter.SeekToLast()
@@ -509,7 +444,7 @@ func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) 
 		case 0:
 			if iter.Valid() {
 				if verbose {
-					fmt.Fprintln(os.Stderr, "Next")
+					_, _ = fmt.Fprintln(os.Stderr, "Next")
 				}
 				iter.Next()
 				index++
@@ -517,7 +452,7 @@ func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) 
 			}
 		case 1:
 			if verbose {
-				fmt.Fprintln(os.Stderr, "SeekToFirst")
+				_, _ = fmt.Fprintln(os.Stderr, "SeekToFirst")
 			}
 			iter.SeekToFirst()
 			index = 0
@@ -538,7 +473,7 @@ func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) 
 		case 3:
 			if iter.Valid() {
 				if verbose {
-					fmt.Fprintln(os.Stderr, "Prev")
+					_, _ = fmt.Fprintln(os.Stderr, "Prev")
 				}
 				iter.Prev()
 				if index == 0 {
@@ -550,7 +485,7 @@ func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) 
 			}
 		case 4:
 			if verbose {
-				fmt.Fprintln(os.Stderr, "SeekToLast")
+				_, _ = fmt.Fprintln(os.Stderr, "SeekToLast")
 			}
 			iter.SeekToLast()
 			if len(keys) == 0 {
@@ -731,7 +666,7 @@ func TestRandomizedLongDB(t *testing.T) {
 }
 
 func TestSimple(t *testing.T) {
-	memtable := NewMemTable(newInternalKeyComparator(ssdb.BytewiseComparator))
+	memtable := newMemTable(newInternalKeyComparator(ssdb.BytewiseComparator))
 	memtable.ref()
 	batch := ssdb.NewWriteBatch()
 	batch.(writeBatchInternal).SetSequence(100)

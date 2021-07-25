@@ -197,7 +197,7 @@ func (e *versionEdit) encodeTo(dst *[]byte) {
 
 func getInternalKey(input *[]byte, dst *internalKey) bool {
 	var b []byte
-	if util.GetLengthPrefixedSlice2(input, &b) {
+	if util.GetLengthPrefixedSlice(input, &b) {
 		dst.decodeFrom(b)
 		return true
 	}
@@ -229,7 +229,7 @@ func (e *versionEdit) decodeFrom(src []byte) error {
 	for msg == "" && util.GetVarInt32(&input, &tag) {
 		switch tag {
 		case tagComparator:
-			if util.GetLengthPrefixedSlice2(&input, &str) {
+			if util.GetLengthPrefixedSlice(&input, &str) {
 				e.comparator = string(str)
 				e.hasComparator = true
 			} else {

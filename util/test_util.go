@@ -1,6 +1,9 @@
 package util
 
-import "strings"
+import (
+	"bytes"
+	"strings"
+)
 
 func RandomString(rnd *Random, l int) string {
 	dst := make([]byte, l)
@@ -10,15 +13,23 @@ func RandomString(rnd *Random, l int) string {
 	return string(dst)
 }
 
+func RandomBytes(rnd *Random, l int) []byte {
+	dst := make([]byte, l)
+	for i := range dst {
+		dst[i] = byte(' ' + rnd.Uniform(95))
+	}
+	return dst
+}
+
 func RandomKey(rnd *Random, l int) string {
 	testChars := [...]byte{'\000', '\001', 'a', 'b', 'c',
 		'd', 'e', '\xfd', '\xfe', '\xff'}
 	n := len(testChars)
-	var b strings.Builder
-	for i := 0; i < l; i++ {
-		b.WriteByte(testChars[rnd.Uniform(n)])
+	dst := make([]byte, l)
+	for i := range dst {
+		dst[i] = testChars[rnd.Uniform(n)]
 	}
-	return b.String()
+	return string(dst)
 }
 
 func CompressibleString(rnd *Random, compressedFraction float64, l int) string {
@@ -32,4 +43,15 @@ func CompressibleString(rnd *Random, compressedFraction float64, l int) string {
 		b.WriteString(rawData)
 	}
 	return b.String()[:l]
+}
+
+func CompressibleBytes(rnd *Random, compressedFraction float64, l int, buf *bytes.Buffer) {
+	raw := int(float64(l) * compressedFraction)
+	if raw < 1 {
+		raw = 1
+	}
+	rawData := RandomBytes(rnd, raw)
+	for buf.Len() < l {
+		buf.Write(rawData)
+	}
 }

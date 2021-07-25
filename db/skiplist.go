@@ -58,7 +58,7 @@ const (
 func (l *skipList) newNode(key skipListKey, height int) *node {
 	return &node{
 		key:   key,
-		nexts: make([]*node, height, height),
+		nexts: make([]*node, height),
 	}
 }
 

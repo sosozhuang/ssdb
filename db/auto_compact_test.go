@@ -38,9 +38,12 @@ func newAutoCompactTest(t *testing.T) *autoCompactTest {
 	return test
 }
 
-func (t *autoCompactTest) finalize() {
+func (t *autoCompactTest) finish() {
+	if t.db != nil {
+		t.db.Close()
+	}
 	_ = Destroy(t.dbName, ssdb.NewOptions())
-	t.tinyCache.Finalize()
+	t.tinyCache.Clear()
 }
 
 func (t *autoCompactTest) key(i int) []byte {
@@ -80,7 +83,7 @@ func (t *autoCompactTest) doReads(n int) {
 		iter := t.db.NewIterator(ssdb.NewReadOptions())
 		for iter.SeekToFirst(); iter.Valid() && bytes.Compare(iter.Key(), limitKey) < 0; iter.Next() {
 		}
-		iter.Finalize()
+		iter.Close()
 		ssdb.DefaultEnv().SleepForMicroseconds(1000000)
 		size := t.size(t.key(0), t.key(n))
 		fmt.Fprintf(os.Stderr, "iter %3d => %7.3f MB [other %7.3f MB]\n", read+1, float64(size)/1048576.0, float64(t.size(t.key(n), t.key(count)))/1048576.0)
@@ -96,10 +99,12 @@ func (t *autoCompactTest) doReads(n int) {
 
 func TestReadAll(t *testing.T) {
 	test := newAutoCompactTest(t)
+	defer test.finish()
 	test.doReads(count)
 }
 
 func TestReadHalf(t *testing.T) {
 	test := newAutoCompactTest(t)
+	defer test.finish()
 	test.doReads(count / 2)
 }

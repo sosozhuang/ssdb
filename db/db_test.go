@@ -165,9 +165,9 @@ func (f *dataFile) Sync() error {
 	return f.base.Sync()
 }
 
-func (f *dataFile) Finalize() {
-	f.base.Finalize()
-}
+//func (f *dataFile) Finalize() {
+//	f.base.Finalize()
+//}
 
 type manifestFile struct {
 	env  *specialEnv
@@ -196,9 +196,9 @@ func (f *manifestFile) Sync() error {
 	return f.base.Sync()
 }
 
-func (f *manifestFile) Finalize() {
-	f.base.Finalize()
-}
+//func (f *manifestFile) Finalize() {
+//	f.base.Finalize()
+//}
 
 type countingFile struct {
 	target  ssdb.RandomAccessFile
@@ -210,8 +210,8 @@ func (f *countingFile) Read(b []byte, offset int64) ([]byte, int, error) {
 	return f.target.Read(b, offset)
 }
 
-func (f *countingFile) Finalize() {
-	f.target.Finalize()
+func (f *countingFile) Close() {
+	f.target.Close()
 }
 
 type optionConfig int8
@@ -248,7 +248,7 @@ func newDBTest(t *testing.T) *dbTest {
 	return test
 }
 
-func (t *dbTest) finalize() {
+func (t *dbTest) finish() {
 	if t.db != nil {
 		t.db.Close()
 	}
@@ -363,7 +363,7 @@ func (t *dbTest) contents() string {
 		matched++
 	}
 	util.AssertEqual(matched, len(forward), "matched", t.t)
-	iter.Finalize()
+	iter.Close()
 	return b.String()
 }
 
@@ -405,7 +405,7 @@ func (t *dbTest) allEntriesFor(userKey string) string {
 		b.WriteByte(']')
 		result = b.String()
 	}
-	iter.Finalize()
+	iter.Close()
 	return result
 }
 
@@ -533,7 +533,7 @@ func (t *dbTest) renameSSDBToSST() int {
 
 func TestDBEmpty(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertTrue(test.db != nil, "db", t)
 		util.AssertEqual("NOT_FOUND", test.get("foo"), "get", t)
@@ -545,7 +545,7 @@ func TestDBEmpty(t *testing.T) {
 
 func TestDBEmptyKey(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("", "v1"), "put", t)
 		util.AssertEqual("v1", test.get(""), "get", t)
@@ -559,7 +559,7 @@ func TestDBEmptyKey(t *testing.T) {
 
 func TestDBEmptyValue(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("key", "v1"), "put", t)
 		util.AssertEqual("v1", test.get("key"), "get", t)
@@ -575,7 +575,7 @@ func TestDBEmptyValue(t *testing.T) {
 
 func TestDBReadWrite(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("foo", "v1"), "put", t)
 		util.AssertEqual("v1", test.get("foo"), "get", t)
@@ -591,7 +591,7 @@ func TestDBReadWrite(t *testing.T) {
 
 func TestDBPutDeleteGet(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.db.Put(ssdb.NewWriteOptions(), []byte("foo"), []byte("v1")), "Put", t)
 		util.AssertEqual("v1", test.get("foo"), "get", t)
@@ -607,7 +607,7 @@ func TestDBPutDeleteGet(t *testing.T) {
 
 func TestDBGetFromImmutableLayer(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		options := test.currentOptions()
 		options.Env = test.env
@@ -631,7 +631,7 @@ func TestDBGetFromImmutableLayer(t *testing.T) {
 
 func TestDBGetFromVersions(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("foo", "v1"), "put", t)
 		_ = test.dbFull().testCompactMemTable()
@@ -644,7 +644,7 @@ func TestDBGetFromVersions(t *testing.T) {
 
 func TestDBGetMemUsage(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("foo", "v1"), "put", t)
 		val, ok := test.db.GetProperty("ssdb.approximate-memory-usage")
@@ -660,7 +660,7 @@ func TestDBGetMemUsage(t *testing.T) {
 
 func TestDBGetSnapshot(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		for i := 0; i < 2; i++ {
 			var key string
@@ -687,7 +687,7 @@ func TestDBGetSnapshot(t *testing.T) {
 
 func TestDBGetIdenticalSnapshots(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		for i := 0; i < 2; i++ {
 			var key string
@@ -721,7 +721,7 @@ func TestDBGetIdenticalSnapshots(t *testing.T) {
 
 func TestDBIterateOverEmptySnapshot(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		snapshot := test.db.GetSnapshot()
 		readOptions := ssdb.NewReadOptions()
@@ -732,14 +732,14 @@ func TestDBIterateOverEmptySnapshot(t *testing.T) {
 		iterator1 := test.db.NewIterator(readOptions)
 		iterator1.SeekToFirst()
 		util.AssertFalse(iterator1.Valid(), "Valid", t)
-		iterator1.Finalize()
+		iterator1.Close()
 
 		_ = test.dbFull().testCompactMemTable()
 
 		iterator2 := test.db.NewIterator(readOptions)
 		iterator2.SeekToFirst()
 		util.AssertFalse(iterator2.Valid(), "Valid", t)
-		iterator2.Finalize()
+		iterator2.Close()
 
 		test.db.ReleaseSnapshot(snapshot)
 		if !test.changeOptions() {
@@ -750,7 +750,7 @@ func TestDBIterateOverEmptySnapshot(t *testing.T) {
 
 func TestDBGetLevel0Ordering(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("bar", "b"), "put", t)
 		util.AssertNotError(test.put("foo", "v1"), "put", t)
@@ -766,7 +766,7 @@ func TestDBGetLevel0Ordering(t *testing.T) {
 
 func TestDBGetOrderedByLevels(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("foo", "v1"), "put", t)
 		test.compact("a", "z")
@@ -783,7 +783,7 @@ func TestDBGetOrderedByLevels(t *testing.T) {
 
 func TestDBGetPicksCorrectFile(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("a", "va"), "put", t)
 		test.compact("a", "b")
@@ -803,7 +803,7 @@ func TestDBGetPicksCorrectFile(t *testing.T) {
 
 func TestDBGetEncountersEmptyLevel(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		compactionCount := 0
 		for test.numTableFilesAtLevel(0) == 0 || test.numTableFilesAtLevel(2) == 0 {
@@ -834,7 +834,7 @@ func TestDBGetEncountersEmptyLevel(t *testing.T) {
 
 func TestDBIterEmpty(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	iter := test.db.NewIterator(ssdb.NewReadOptions())
 	iter.SeekToFirst()
 	util.AssertEqual(test.iterStatus(iter), "(invalid)", "SeekToFirst", t)
@@ -842,12 +842,12 @@ func TestDBIterEmpty(t *testing.T) {
 	util.AssertEqual(test.iterStatus(iter), "(invalid)", "SeekToFirst", t)
 	iter.Seek([]byte("foo"))
 	util.AssertEqual(test.iterStatus(iter), "(invalid)", "SeekToFirst", t)
-	iter.Finalize()
+	iter.Close()
 }
 
 func TestDBIterSingle(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	util.AssertNotError(test.put("a", "va"), "put", t)
 	iter := test.db.NewIterator(ssdb.NewReadOptions())
 
@@ -882,12 +882,12 @@ func TestDBIterSingle(t *testing.T) {
 	iter.Seek([]byte("b"))
 	util.AssertEqual(test.iterStatus(iter), "(invalid)", "iterStatus", t)
 
-	iter.Finalize()
+	iter.Close()
 }
 
 func TestDBIterMulti(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	util.AssertNotError(test.put("a", "va"), "put", t)
 	util.AssertNotError(test.put("b", "vb"), "put", t)
 	util.AssertNotError(test.put("c", "vc"), "put", t)
@@ -964,12 +964,12 @@ func TestDBIterMulti(t *testing.T) {
 	iter.Prev()
 	util.AssertEqual(test.iterStatus(iter), "(invalid)", "iterStatus", t)
 
-	iter.Finalize()
+	iter.Close()
 }
 
 func TestDBIterSmallAndLargeMix(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	util.AssertNotError(test.put("a", "va"), "put", t)
 	util.AssertNotError(test.put("b", strings.Repeat("b", 100000)), "put", t)
 	util.AssertNotError(test.put("c", "vc"), "put", t)
@@ -1003,12 +1003,12 @@ func TestDBIterSmallAndLargeMix(t *testing.T) {
 	iter.Prev()
 	util.AssertEqual(test.iterStatus(iter), "(invalid)", "iterStatus", t)
 
-	iter.Finalize()
+	iter.Close()
 }
 
 func TestDBIterMultiWithDelete(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("a", "va"), "put", t)
 		util.AssertNotError(test.put("b", "vb"), "put", t)
@@ -1022,7 +1022,7 @@ func TestDBIterMultiWithDelete(t *testing.T) {
 		iter.Prev()
 		util.AssertEqual(test.iterStatus(iter), "a->va", "iterStatus", t)
 
-		iter.Finalize()
+		iter.Close()
 		if !test.changeOptions() {
 			break
 		}
@@ -1031,7 +1031,7 @@ func TestDBIterMultiWithDelete(t *testing.T) {
 
 func TestDBRecover(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("foo", "v1"), "put", t)
 		util.AssertNotError(test.put("baz", "v5"), "put", t)
@@ -1059,7 +1059,7 @@ func TestDBRecover(t *testing.T) {
 
 func TestDBRecoveryWithEmptyLog(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("foo", "v1"), "put", t)
 		util.AssertNotError(test.put("foo", "v2"), "put", t)
@@ -1077,7 +1077,7 @@ func TestDBRecoveryWithEmptyLog(t *testing.T) {
 
 func TestDBRecoverDuringMemtableCompaction(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		options := test.currentOptions()
 		options.Env = test.env
@@ -1106,7 +1106,7 @@ func dbKey(i int) string {
 
 func TestMinorCompactionsHappen(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	options := test.currentOptions()
 	options.WriteBufferSize = 10000
 	test.reopen(options)
@@ -1133,7 +1133,7 @@ func TestMinorCompactionsHappen(t *testing.T) {
 
 func TestDBRecoverWithLargeLog(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	options := test.currentOptions()
 	test.reopen(options)
 	util.AssertNotError(test.put("big1", strings.Repeat("1", 200000)), "put", t)
@@ -1156,7 +1156,7 @@ func TestDBRecoverWithLargeLog(t *testing.T) {
 
 func TestDBCompactionsGenerateMultipleFiles(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	options := test.currentOptions()
 	options.WriteBufferSize = 100000000
 
@@ -1179,7 +1179,7 @@ func TestDBCompactionsGenerateMultipleFiles(t *testing.T) {
 
 func TestDBRepeatedWritesToSameKey(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	options := test.currentOptions()
 	options.Env = test.env
 	options.WriteBufferSize = 100000
@@ -1198,7 +1198,7 @@ func TestDBRepeatedWritesToSameKey(t *testing.T) {
 
 func TestDBSparseMerge(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	options := test.currentOptions()
 	options.CompressionType = ssdb.NoCompression
 	test.reopen(options)
@@ -1237,7 +1237,7 @@ func between(val, low, high uint64) bool {
 
 func TestDBApproximateSizes(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		options := test.currentOptions()
 		options.WriteBufferSize = 100000000
@@ -1294,7 +1294,7 @@ func TestDBApproximateSizes(t *testing.T) {
 
 func TestDBApproximateSizesMixOfSmallAndLarge(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		options := test.currentOptions()
 		options.CompressionType = ssdb.NoCompression
@@ -1337,7 +1337,7 @@ func TestDBApproximateSizesMixOfSmallAndLarge(t *testing.T) {
 
 func TestDBIteratorPinsRef(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	_ = test.put("foo", "hello")
 
 	iter := test.db.NewIterator(ssdb.NewReadOptions())
@@ -1352,12 +1352,12 @@ func TestDBIteratorPinsRef(t *testing.T) {
 	util.AssertEqual([]byte("hello"), iter.Value(), "Value", t)
 	iter.Next()
 	util.AssertFalse(iter.Valid(), "Valid", t)
-	iter.Finalize()
+	iter.Close()
 }
 
 func TestDBSnapshot(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		_ = test.put("foo", "v1")
 		s1 := test.db.GetSnapshot()
@@ -1392,7 +1392,7 @@ func TestDBSnapshot(t *testing.T) {
 
 func TestDBHiddenValuesAreRemoved(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		rnd := util.NewRandom(301)
 		test.fillLevels("a", "z")
@@ -1428,7 +1428,7 @@ func TestDBHiddenValuesAreRemoved(t *testing.T) {
 
 func TestDBDeletionMarkers1(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	_ = test.put("foo", "v1")
 	util.AssertNotError(test.dbFull().testCompactMemTable(), "testCompactMemTable", t)
 	const last = maxMemCompactLevel
@@ -1454,7 +1454,7 @@ func TestDBDeletionMarkers1(t *testing.T) {
 
 func TestDBDeletionMarkers2(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	_ = test.put("foo", "v1")
 	util.AssertNotError(test.dbFull().testCompactMemTable(), "testCompactMemTable", t)
 	const last = maxMemCompactLevel
@@ -1478,7 +1478,7 @@ func TestDBDeletionMarkers2(t *testing.T) {
 
 func TestDBOverlapInLevel0(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for {
 		util.AssertNotError(test.put("100", "v100"), "put", t)
 		util.AssertNotError(test.put("999", "v999"), "put", t)
@@ -1513,7 +1513,7 @@ func TestDBOverlapInLevel0(t *testing.T) {
 
 func TestDBL0CompactionBugIssue44A(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.reopen(nil)
 	util.AssertNotError(test.put("b", "v"), "put", t)
 	test.reopen(nil)
@@ -1532,7 +1532,7 @@ func TestDBL0CompactionBugIssue44A(t *testing.T) {
 
 func TestDBL0CompactionBugIssue44B(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.reopen(nil)
 	_ = test.put("", "")
 	test.reopen(nil)
@@ -1560,7 +1560,7 @@ func TestDBL0CompactionBugIssue44B(t *testing.T) {
 
 func TestDBFflushIssue474(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	const num = 100000
 	rnd := util.NewRandom(uint32(randomSeed()))
 	for i := 0; i < num; i++ {
@@ -1571,7 +1571,7 @@ func TestDBFflushIssue474(t *testing.T) {
 
 func TestDBComparatorCheck(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	var cmp newComparator
 	newOptions := test.currentOptions()
 	newOptions.Comparator = &cmp
@@ -1601,7 +1601,7 @@ func (c *newComparator) FindShortSuccessor(key *[]byte) {
 
 func TestDBCustomComparator(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	var cmp numberComparator
 	newOptions := test.currentOptions()
 	newOptions.CreateIfMissing = true
@@ -1664,7 +1664,7 @@ func toNumber(x []byte) int {
 
 func TestDBManualCompaction(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.makeTables(3, "p", "q")
 	util.AssertEqual("1,1,1", test.filesPerLevel(), "filesPerLevel", t)
 
@@ -1750,7 +1750,7 @@ func TestDBDestroyEmptyDir(t *testing.T) {
 
 func TestDBDestroyOpenDB(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	dbName := tmpDir() + "/open_db_dir"
 	_ = test.env.DeleteDir(dbName)
 	util.AssertFalse(test.env.FileExists(dbName), "FileExists", t)
@@ -1773,14 +1773,14 @@ func TestDBDestroyOpenDB(t *testing.T) {
 
 func TestDBLocking(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	_, err := Open(test.currentOptions(), test.dbName)
 	util.AssertError(err, "locking", t)
 }
 
 func TestDBNoSpace(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	options := test.currentOptions()
 	options.Env = test.env
 	test.reopen(options)
@@ -1801,7 +1801,7 @@ func TestDBNoSpace(t *testing.T) {
 
 func TestDBNonWritableFileSystem(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	options := test.currentOptions()
 	options.WriteBufferSize = 1000
 	options.Env = test.env
@@ -1824,7 +1824,7 @@ func TestDBNonWritableFileSystem(t *testing.T) {
 
 func TestDBWriteSyncError(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	options := test.currentOptions()
 	options.Env = test.env
 	test.reopen(options)
@@ -1850,7 +1850,7 @@ func TestDBWriteSyncError(t *testing.T) {
 
 func TestDBManifestWriteError(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	for iter := 0; iter < 2; iter++ {
 		var errorType *util.AtomicBool
 		if iter == 0 {
@@ -1883,7 +1883,7 @@ func TestDBManifestWriteError(t *testing.T) {
 
 func TestDBMissingSSTFile(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 
 	util.AssertNotError(test.put("foo", "bar"), "put", t)
 	util.AssertEqual("bar", test.get("foo"), "get", t)
@@ -1902,7 +1902,7 @@ func TestDBMissingSSTFile(t *testing.T) {
 
 func TestDBStillReadSST(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 
 	util.AssertNotError(test.put("foo", "bar"), "put", t)
 	util.AssertEqual("bar", test.get("foo"), "get", t)
@@ -1920,7 +1920,7 @@ func TestDBStillReadSST(t *testing.T) {
 
 func TestDBFilesDeletedAfterCompaction(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	util.AssertNotError(test.put("foo", "v2"), "put", t)
 	test.compact("a", "z")
 	numFiles := test.countFiles()
@@ -1933,7 +1933,7 @@ func TestDBFilesDeletedAfterCompaction(t *testing.T) {
 
 func TestDBBloomFilter(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.env.countRandomReads = true
 	options := test.currentOptions()
 	options.Env = test.env
@@ -1973,7 +1973,7 @@ func TestDBBloomFilter(t *testing.T) {
 
 	test.env.delayDataSync.SetFalse()
 	test.close()
-	options.BlockCache.Finalize()
+	options.BlockCache.Clear()
 }
 
 const (
@@ -2033,7 +2033,7 @@ func mtThreadBody(arg interface{}) {
 
 func TestDBMultiThreaded(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	var mt mtState
 	for {
 		mt.test = test
@@ -2220,10 +2220,10 @@ func (i *modelIterator) Status() error {
 	return nil
 }
 
-func (i *modelIterator) RegisterCleanUp(function ssdb.CleanUpFunction, arg1, arg2 interface{}) {
+func (i *modelIterator) RegisterCleanUp(_ ssdb.CleanUpFunction, _, _ interface{}) {
 }
 
-func (i *modelIterator) Finalize() {
+func (i *modelIterator) Close() {
 }
 
 func compareIterators(step int, model, db ssdb.DB, modelSnap, dbSnap ssdb.Snapshot) bool {
@@ -2262,14 +2262,14 @@ func compareIterators(step int, model, db ssdb.DB, modelSnap, dbSnap ssdb.Snapsh
 		}
 	}
 	fmt.Fprintf(os.Stderr, "%d entries compared: ok=%v\n", count, ok)
-	mIter.Finalize()
-	dbIter.Finalize()
+	mIter.Close()
+	dbIter.Close()
 	return ok
 }
 
 func TestDBRandomized(t *testing.T) {
 	test := newDBTest(t)
-	defer test.finalize()
+	defer test.finish()
 	rnd := util.NewRandom(uint32(util.RandomSeed()))
 	const n = 10000
 	for {
@@ -2350,7 +2350,7 @@ func makeDBKey(num uint) []byte {
 }
 
 func bmLogAndApply(iters, numBaseFiles int, t *testing.T) {
-	dbName := tmpDir() + "/leveldb_test_benchmark"
+	dbName := tmpDir() + "/ssdb_test_benchmark"
 	_ = Destroy(dbName, ssdb.NewOptions())
 
 	opts := ssdb.NewOptions()

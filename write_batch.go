@@ -76,13 +76,13 @@ func (b *writeBatch) Iterate(handler WriteBatchHandler) error {
 		input = input[1:]
 		switch tag {
 		case TypeValue:
-			if util.GetLengthPrefixedSlice1(&input, &key) && util.GetLengthPrefixedSlice1(&input, &value) {
+			if util.GetLengthPrefixedSlice(&input, &key) && util.GetLengthPrefixedSlice(&input, &value) {
 				handler.Put(key, value)
 			} else {
 				return util.CorruptionError1("bad WriteBatch Put")
 			}
 		case TypeDeletion:
-			if util.GetLengthPrefixedSlice1(&input, &key) {
+			if util.GetLengthPrefixedSlice(&input, &key) {
 				handler.Delete(key)
 			} else {
 				return util.CorruptionError1("bad WriteBatch Delete")

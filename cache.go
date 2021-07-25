@@ -17,7 +17,7 @@ type Cache interface {
 	NewId() uint64
 	Prune()
 	TotalCharge() int
-	Finalizer
+	Clear()
 }
 
 type lruHandle struct {
@@ -112,8 +112,8 @@ func (t *handleTable) resize() {
 	t.length = newLength
 }
 
-func newHandleTable() *handleTable {
-	ht := &handleTable{
+func newHandleTable() handleTable {
+	ht := handleTable{
 		length: 0,
 		elems:  0,
 	}
@@ -144,7 +144,7 @@ func newLRUCache() *lruCache {
 		usage:    0,
 		lru:      lruHandle{},
 		inUse:    lruHandle{},
-		table:    *newHandleTable(),
+		table:    newHandleTable(),
 	}
 	c.lru.next = &c.lru
 	c.lru.prev = &c.lru
@@ -153,7 +153,7 @@ func newLRUCache() *lruCache {
 	return c
 }
 
-func (c *lruCache) finalize() {
+func (c *lruCache) clear() {
 	if c.inUse.next != &c.inUse {
 		panic("lruCache: inUse.next != &inUse")
 	}
@@ -173,8 +173,8 @@ func (c *lruCache) finalize() {
 
 func (c *lruCache) ref(h *lruHandle) {
 	if h.refs == 1 && h.inCache {
-		c.lruRemove(h)
-		c.lruAppend(&c.inUse, h)
+		lruRemove(h)
+		lruAppend(&c.inUse, h)
 	}
 	h.refs++
 }
@@ -190,17 +190,17 @@ func (c *lruCache) unref(h *lruHandle) {
 		}
 		h.deleter(h.key, h.value)
 	} else if h.inCache && h.refs == 1 {
-		c.lruRemove(h)
-		c.lruAppend(&c.lru, h)
+		lruRemove(h)
+		lruAppend(&c.lru, h)
 	}
 }
 
-func (c *lruCache) lruRemove(h *lruHandle) {
+func lruRemove(h *lruHandle) {
 	h.next.prev = h.prev
 	h.prev.next = h.next
 }
 
-func (c *lruCache) lruAppend(list *lruHandle, h *lruHandle) {
+func lruAppend(list, h *lruHandle) {
 	h.next = list
 	h.prev = list.prev
 	h.prev.next = h
@@ -234,12 +234,13 @@ func (c *lruCache) insert(key []byte, hash uint32, value interface{}, charge int
 		inCache: false,
 		refs:    1,
 		hash:    hash,
-		key:     key,
+		key:     make([]byte, len(key)),
 	}
+	copy(h.key, key)
 	if c.capacity > 0 {
 		h.refs++
 		h.inCache = true
-		c.lruAppend(&c.inUse, h)
+		lruAppend(&c.inUse, h)
 		c.usage += charge
 		c.finishErase(c.table.insert(h))
 	} else {
@@ -265,7 +266,7 @@ func (c *lruCache) finishErase(h *lruHandle) bool {
 		if !h.inCache {
 			panic("lruHandle.inCache not true")
 		}
-		c.lruRemove(h)
+		lruRemove(h)
 		h.inCache = false
 		c.usage -= h.charge
 		c.unref(h)
@@ -359,9 +360,9 @@ func (c *shardedLRUCache) TotalCharge() int {
 	return total
 }
 
-func (c *shardedLRUCache) Finalize() {
+func (c *shardedLRUCache) Clear() {
 	for s := 0; s < numShards; s++ {
-		c.shard[s].finalize()
+		c.shard[s].clear()
 	}
 }
 

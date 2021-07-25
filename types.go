@@ -7,6 +7,10 @@ const (
 	TypeValue
 )
 
-type Finalizer interface {
-	Finalize()
+type Closer interface {
+	Close()
+}
+
+type Clearer interface {
+	Clear()
 }

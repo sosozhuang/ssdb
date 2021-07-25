@@ -3,7 +3,6 @@ package db
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"ssdb"
 	"ssdb/util"
 	"strings"
@@ -19,7 +18,7 @@ func getDirName(filename string) string {
 	return filename[0:found]
 }
 
-func syncDir(dir string) error {
+func syncDir(_ string) error {
 	return nil
 }
 
@@ -31,13 +30,13 @@ func truncate(filename string, length uint64) error {
 	}
 	b := make([]byte, length)
 	b, _, err = origFile.Read(b)
-	origFile.Finalize()
+	origFile.Close()
 	if err == nil {
 		tmpName := getDirName(filename) + "/truncate.tmp"
 		var tmpFile ssdb.WritableFile
 		if tmpFile, err = env.NewWritableFile(tmpName); err == nil {
 			err = tmpFile.Append(b)
-			tmpFile.Finalize()
+			_ = tmpFile.Close()
 			if err == nil {
 				err = env.RenameFile(tmpName, filename)
 			} else {
@@ -93,13 +92,14 @@ func (f *testWritableFile) Append(data []byte) error {
 	return err
 }
 
-func (f *testWritableFile) Close() error {
-	f.writableFileOpened = false
-	err := f.target.Close()
-	if err == nil {
-		f.env.writableFileClosed(f.state)
+func (f *testWritableFile) Close() (err error) {
+	if f.writableFileOpened {
+		f.writableFileOpened = false
+		if err = f.target.Close(); err == nil {
+			f.env.writableFileClosed(f.state)
+		}
 	}
-	return err
+	return
 }
 
 func (f *testWritableFile) Flush() error {
@@ -126,12 +126,12 @@ func (f *testWritableFile) Sync() error {
 	return err
 }
 
-func (f *testWritableFile) Finalize() {
-	if f.writableFileOpened {
-		_ = f.Close()
-	}
-	f.target.Finalize()
-}
+//func (f *testWritableFile) Finalize() {
+//	if f.writableFileOpened {
+//		_ = f.Close()
+//	}
+//	f.target.Finalize()
+//}
 
 func (f *testWritableFile) syncParent() error {
 	err := syncDir(getDirName(f.state.filename))
@@ -337,12 +337,6 @@ func newFaultInjectionTest(t *testing.T) *faultInjectionTest {
 	test.options.ParanoidChecks = true
 	test.options.BlockCache = test.tinyCache
 	test.options.CreateIfMissing = true
-	runtime.SetFinalizer(test, func(t *faultInjectionTest) {
-		_ = Destroy(t.dbName, ssdb.NewOptions())
-		t.closeDB()
-		t.tinyCache.Finalize()
-		t.env = nil
-	})
 	return test
 }
 
@@ -393,6 +387,13 @@ func (t *faultInjectionTest) verify(startIdx, numVals int, expected ExpectedVeri
 	return err
 }
 
+func (t *faultInjectionTest) finish() {
+	_ = Destroy(t.dbName, ssdb.NewOptions())
+	t.closeDB()
+	t.tinyCache.Clear()
+	t.env = nil
+}
+
 func key(i int) []byte {
 	return []byte(fmt.Sprintf("%016d", i))
 }
@@ -422,7 +423,7 @@ func (t *faultInjectionTest) deleteAllData() {
 	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 		util.AssertNotError(t.db.Delete(ssdb.NewWriteOptions(), iter.Key()), "Delete", t.t)
 	}
-	iter.Finalize()
+	iter.Close()
 }
 
 func (t *faultInjectionTest) resetDBState(resetMethod ResetMethod) {
@@ -495,12 +496,14 @@ func (t *faultInjectionTest) doTest() {
 
 func TestNoLogReuse(t *testing.T) {
 	test := newFaultInjectionTest(t)
+	defer test.finish()
 	test.reuseLogs(false)
 	test.doTest()
 }
 
 func TestWithLogReuse(t *testing.T) {
 	test := newFaultInjectionTest(t)
+	defer test.finish()
 	test.reuseLogs(true)
 	test.doTest()
 }

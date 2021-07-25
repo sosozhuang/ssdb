@@ -9,5 +9,5 @@ type TableBuilder interface {
 	Abandon()
 	NumEntries() int64
 	FileSize() uint64
-	Finalizer
+	Closer
 }

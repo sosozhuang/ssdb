@@ -29,19 +29,20 @@ func buildTable(dbName string, env ssdb.Env, options *ssdb.Options, tableCache *
 				panic("builder: meta.fileSize <= 0")
 			}
 		}
-		builder.Finalize()
+		builder.Close()
 
 		if err == nil {
 			err = file.Sync()
 		}
 		if err == nil {
 			err = file.Close()
+		} else {
+			_ = file.Close()
 		}
-		file.Finalize()
 		if err == nil {
 			it := tableCache.newIterator(ssdb.NewReadOptions(), meta.number, meta.fileSize, nil)
 			err = it.Status()
-			it.Finalize()
+			it.Close()
 		}
 	}
 

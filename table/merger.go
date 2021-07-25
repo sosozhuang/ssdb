@@ -121,11 +121,11 @@ func (iter *mergingIterator) Status() (err error) {
 	return
 }
 
-func (iter *mergingIterator) Finalize() {
+func (iter *mergingIterator) Close() {
 	for _, child := range iter.children {
-		child.finalize()
+		child.close()
 	}
-	iter.CleanUpIterator.Finalize()
+	iter.CleanUpIterator.Close()
 }
 
 func (iter *mergingIterator) findSmallest() {

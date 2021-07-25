@@ -3,7 +3,6 @@ package db
 import (
 	"io/ioutil"
 	"log"
-	"runtime"
 	"ssdb"
 	"ssdb/util"
 	"strings"
@@ -125,7 +124,7 @@ func (f *sequentialFileImpl) Skip(n uint64) error {
 	return nil
 }
 
-func (f *sequentialFileImpl) Finalize() {
+func (f *sequentialFileImpl) Close() {
 	f.file.unref()
 }
 
@@ -143,7 +142,7 @@ func (f *randomAccessFileImpl) Read(b []byte, offset int64) ([]byte, int, error)
 	return f.file.read(uint64(offset), b)
 }
 
-func (f *randomAccessFileImpl) Finalize() {
+func (f *randomAccessFileImpl) Close() {
 	f.file.unref()
 }
 
@@ -162,6 +161,7 @@ func (f *writableFileImpl) Append(data []byte) error {
 }
 
 func (f *writableFileImpl) Close() error {
+	f.file.unref()
 	return nil
 }
 
@@ -173,9 +173,9 @@ func (f *writableFileImpl) Sync() error {
 	return nil
 }
 
-func (f *writableFileImpl) Finalize() {
-	f.file.unref()
-}
+//func (f *writableFileImpl) Finalize() {
+//	f.file.unref()
+//}
 
 type fileSystem map[string]*envFileState
 type inMemoryEnv struct {
@@ -189,12 +189,13 @@ func newInMemoryEnv(baseEnv ssdb.Env) *inMemoryEnv {
 		EnvWrapper: ssdb.EnvWrapper{Env: baseEnv},
 		fileMap:    make(map[string]*envFileState),
 	}
-	runtime.SetFinalizer(e, func(e *inMemoryEnv) {
-		for _, f := range e.fileMap {
-			f.unref()
-		}
-	})
 	return e
+}
+
+func (e *inMemoryEnv) finalize() {
+	for _, f := range e.fileMap {
+		f.unref()
+	}
 }
 
 func (e *inMemoryEnv) NewSequentialFile(fname string) (ssdb.SequentialFile, error) {
@@ -332,8 +333,8 @@ func (e *inMemoryEnv) GetTestDirectory() (string, error) {
 	return "/test", nil
 }
 
-func (e *inMemoryEnv) NewLogger(_ string) (*log.Logger, error) {
-	return log.New(ioutil.Discard, "", log.LstdFlags), nil
+func (e *inMemoryEnv) NewLogger(_ string) (*log.Logger, func(), error) {
+	return log.New(ioutil.Discard, "", log.LstdFlags), func() {}, nil
 }
 
 func newMemEnv(baseEnv ssdb.Env) ssdb.Env {

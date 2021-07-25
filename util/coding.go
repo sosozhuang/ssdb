@@ -1,7 +1,6 @@
 package util
 
 import (
-	"reflect"
 	"unsafe"
 )
 
@@ -34,7 +33,7 @@ func DecodeFixed32(b []byte) uint32 {
 func EncodeFixed32(dst *[4]byte, value uint32) {
 	if littleEndian {
 		x := *(*[4]byte)(unsafe.Pointer(&value))
-		copy(dst[:], x[:])
+		*dst = x
 	} else {
 		dst[0] = byte(value & 0xff)
 		dst[1] = byte((value >> 8) & 0xff)
@@ -56,7 +55,7 @@ func DecodeFixed64(b []byte) uint64 {
 func EncodeFixed64(dst *[8]byte, value uint64) {
 	if littleEndian {
 		x := *(*[8]byte)(unsafe.Pointer(&value))
-		copy(dst[:], x[:])
+		*dst = x
 	} else {
 		dst[0] = byte(value & 0xff)
 		dst[1] = byte((value >> 8) & 0xff)
@@ -180,9 +179,8 @@ func GetVarInt32(input *[]byte, value *uint32) bool {
 
 func GetVarInt32Ptr(input []byte, value *uint32) int {
 	if len(input) > 1 {
-		result := uint32(input[0])
-		if result&128 == 0 {
-			*value = result
+		if input[0]&128 == 0 {
+			*value = uint32(input[0])
 			return 1
 		}
 	}
@@ -217,39 +215,13 @@ func GetVarInt64Ptr(input []byte, value *uint64) int {
 	return -1
 }
 
-func GetLengthPrefixedSlice1(input *[]byte, result *[]byte) bool {
+func GetLengthPrefixedSlice(input, result *[]byte) bool {
 	var l uint32
 	if GetVarInt32(input, &l) && len(*input) >= int(l) {
-		*result = make([]byte, l)
-		copy(*result, (*input)[:l])
-		*input = (*input)[l:]
-		return true
-	}
-	return false
-}
-
-func GetLengthPrefixedSlice2(input, result *[]byte) bool {
-	var l uint32
-	if GetVarInt32(input, &l) && len(*input) >= int(l) {
-		*result = make([]byte, l, l)
-		copy(*result, *input)
+		*result = (*input)[:l]
 		*input = (*input)[l:]
 		return true
 	} else {
 		return false
 	}
-}
-
-func SliceByteToString(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
-
-func StringToSliceByte(s string) []byte {
-	sh := *(*reflect.StringHeader)(unsafe.Pointer(&s))
-	bh := reflect.SliceHeader{
-		Data: sh.Data,
-		Len:  sh.Len,
-		Cap:  sh.Len,
-	}
-	return *(*[]byte)(unsafe.Pointer(&bh))
 }

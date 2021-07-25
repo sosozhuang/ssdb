@@ -8,7 +8,6 @@ import (
 	"ssdb/util"
 	"strings"
 	"testing"
-	"unsafe"
 )
 
 func reverseString(key string) string {
@@ -30,7 +29,6 @@ func reverseBytes(key []byte) []byte {
 		r[i] = key[n-i]
 	}
 	return r
-
 }
 
 type reverseKeyComparator struct{}
@@ -112,8 +110,8 @@ func (s *stringSink) Sync() error {
 	return nil
 }
 
-func (s *stringSink) Finalize() {
-}
+//func (s *stringSink) Finalize() {
+//}
 
 func (s *stringSink) getContents() []byte {
 	return s.contents
@@ -145,7 +143,7 @@ func (s *stringSource) Read(b []byte, offset int64) (result []byte, n int, err e
 	return
 }
 
-func (s *stringSource) Finalize() {
+func (s *stringSource) Close() {
 }
 
 func (s *stringSource) size() int {
@@ -385,7 +383,7 @@ func (h *harness) test(rnd *util.Random) {
 	h.testRandomAccess(rnd, keys, data)
 }
 
-func (h *harness) testForwardScan(keys []string, data kvMap) {
+func (h *harness) testForwardScan(_ []string, data kvMap) {
 	iter := h.constructor.newIterator()
 	util.AssertFalse(iter.Valid(), "iter.Valid()", h.t)
 	iter.SeekToFirst()
@@ -394,9 +392,10 @@ func (h *harness) testForwardScan(keys []string, data kvMap) {
 		iter.Next()
 	}
 	util.AssertFalse(iter.Valid(), "iter.Valid()", h.t)
+	iter.Close()
 }
 
-func (h *harness) testBackwardScan(keys []string, data kvMap) {
+func (h *harness) testBackwardScan(_ []string, data kvMap) {
 	iter := h.constructor.newIterator()
 	util.AssertFalse(iter.Valid(), "iter.Valid()", h.t)
 	iter.SeekToLast()
@@ -405,6 +404,7 @@ func (h *harness) testBackwardScan(keys []string, data kvMap) {
 		iter.Prev()
 	}
 	util.AssertFalse(iter.Valid(), "iter.Valid()", h.t)
+	iter.Close()
 }
 
 func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) {
@@ -421,7 +421,7 @@ func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) 
 		case 0:
 			if iter.Valid() {
 				if verbose {
-					fmt.Fprintln(os.Stderr, "Next")
+					_, _ = fmt.Fprintln(os.Stderr, "Next")
 				}
 				iter.Next()
 				index++
@@ -429,7 +429,7 @@ func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) 
 			}
 		case 1:
 			if verbose {
-				fmt.Fprintln(os.Stderr, "SeekToFirst")
+				_, _ = fmt.Fprintln(os.Stderr, "SeekToFirst")
 			}
 			iter.SeekToFirst()
 			index = 0
@@ -450,7 +450,7 @@ func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) 
 		case 3:
 			if iter.Valid() {
 				if verbose {
-					fmt.Fprintln(os.Stderr, "Prev")
+					_, _ = fmt.Fprintln(os.Stderr, "Prev")
 				}
 				iter.Prev()
 				if index == 0 {
@@ -462,7 +462,7 @@ func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) 
 			}
 		case 4:
 			if verbose {
-				fmt.Fprintln(os.Stderr, "SeekToLast")
+				_, _ = fmt.Fprintln(os.Stderr, "SeekToLast")
 			}
 			iter.SeekToLast()
 			if len(keys) == 0 {
@@ -479,6 +479,7 @@ func (h *harness) testRandomAccess(rnd *util.Random, keys []string, data kvMap) 
 			util.AssertEqual(kvToString(data, index), iteratorToString(iter), "seekToLast", h.t)
 		}
 	}
+	iter.Close()
 }
 
 func kvToString(data kvMap, i int) string {
@@ -530,7 +531,7 @@ func TestEmpty(t *testing.T) {
 }
 
 func TestZeroRestartPointsInBlock(t *testing.T) {
-	data := make([]byte, unsafe.Sizeof(uint32(0)))
+	data := make([]byte, uint32Size)
 	for i := range data {
 		data[i] = 0
 	}

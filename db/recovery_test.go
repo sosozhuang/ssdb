@@ -28,6 +28,11 @@ func newRecoveryTest(t *testing.T) *recoveryTest {
 	return test
 }
 
+func (t *recoveryTest) finish() {
+	t.close()
+	_ = Destroy(t.dbName, ssdb.NewOptions())
+}
+
 func (t *recoveryTest) dbFull() *db {
 	return t.db.(*db)
 }
@@ -35,7 +40,7 @@ func (t *recoveryTest) dbFull() *db {
 func (t *recoveryTest) canAppend() bool {
 	tmp, err := t.env.NewAppendableFile(currentFileName(t.dbName))
 	if err == nil {
-		tmp.Finalize()
+		_ = tmp.Close()
 	}
 	if ssdb.IsNotSupportedError(err) {
 		return false
@@ -77,7 +82,7 @@ func (t *recoveryTest) put(k, v string) error {
 	return t.db.Put(ssdb.NewWriteOptions(), []byte(k), []byte(v))
 }
 
-func (t *recoveryTest) get(k string, snapshot ssdb.Snapshot) string {
+func (t *recoveryTest) get(k string, _ ssdb.Snapshot) string {
 	result, err := t.db.Get(ssdb.NewReadOptions(), []byte(k))
 	if ssdb.IsNotFound(err) {
 		return "NOT_FOUND"
@@ -162,11 +167,12 @@ func (t *recoveryTest) makeLogFile(lognum uint64, seq sequenceNumber, key, val s
 	batch.(writeBatchInternal).SetSequence(uint64(seq))
 	util.AssertNotError(writer.addRecord(batch.(writeBatchInternal).Contents()), "addRecord", t.t)
 	util.AssertNotError(file.Flush(), "Flush", t.t)
-	file.Finalize()
+	_ = file.Close()
 }
 
 func TestManifestReused(t *testing.T) {
 	test := newRecoveryTest(t)
+	defer test.finish()
 	if !test.canAppend() {
 		fmt.Fprintf(os.Stderr, "skipping test because env does not support appending\n")
 		return
@@ -184,6 +190,7 @@ func TestManifestReused(t *testing.T) {
 
 func TestLargeManifestCompacted(t *testing.T) {
 	test := newRecoveryTest(t)
+	defer test.finish()
 	if !test.canAppend() {
 		fmt.Fprintf(os.Stderr, "skipping test because env does not support appending\n")
 		return
@@ -198,7 +205,7 @@ func TestLargeManifestCompacted(t *testing.T) {
 	zeroes := bytes.Repeat([]byte{'\000'}, 3*1048576-l)
 	util.AssertNotError(file.Append(zeroes), "Append", t)
 	util.AssertNotError(file.Flush(), "Flush", t)
-	file.Finalize()
+	_ = file.Close()
 	file = nil
 
 	test.open(nil)
@@ -214,6 +221,7 @@ func TestLargeManifestCompacted(t *testing.T) {
 
 func TestNoLogFiles(t *testing.T) {
 	test := newRecoveryTest(t)
+	defer test.finish()
 	util.AssertNotError(test.put("foo", "bar"), "put", t)
 	util.AssertEqual(1, test.deleteLogFiles(), "deleteLogFiles", t)
 	test.open(nil)
@@ -224,6 +232,7 @@ func TestNoLogFiles(t *testing.T) {
 
 func TestLogFileReuse(t *testing.T) {
 	test := newRecoveryTest(t)
+	defer test.finish()
 	if !test.canAppend() {
 		fmt.Fprintf(os.Stderr, "skipping test because env does not support appending\n")
 		return
@@ -255,6 +264,7 @@ func TestLogFileReuse(t *testing.T) {
 func TestMultipleMemTables(t *testing.T) {
 	const num = 1000
 	test := newRecoveryTest(t)
+	defer test.finish()
 	for i := 0; i < num; i++ {
 		buf := fmt.Sprintf("%050d", i)
 		util.AssertNotError(test.put(buf, buf), "put", t)
@@ -280,6 +290,7 @@ func TestMultipleMemTables(t *testing.T) {
 
 func TestMultipleLogFiles(t *testing.T) {
 	test := newRecoveryTest(t)
+	defer test.finish()
 	util.AssertNotError(test.put("foo", "bar"), "put", t)
 	test.close()
 	util.AssertEqual(1, test.numLogs(), "numLogs", t)
@@ -323,6 +334,7 @@ func TestMultipleLogFiles(t *testing.T) {
 
 func TestManifestMissing(t *testing.T) {
 	test := newRecoveryTest(t)
+	defer test.finish()
 	util.AssertNotError(test.put("foo", "bar"), "put", t)
 	test.close()
 	test.deleteManifestFile()

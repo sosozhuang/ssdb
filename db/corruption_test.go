@@ -71,12 +71,12 @@ func newCorruptionTest(t *testing.T) *corruptionTest {
 	return test
 }
 
-func (t *corruptionTest) finalize() {
+func (t *corruptionTest) finish() {
 	if t.db != nil {
 		t.db.Close()
 	}
 	if t.tinyCache != nil {
-		t.tinyCache.Finalize()
+		t.tinyCache.Clear()
 	}
 }
 
@@ -142,7 +142,7 @@ func (t *corruptionTest) check(minExcepted, maxExcepted int) {
 			correct++
 		}
 	}
-	iter.Finalize()
+	iter.Close()
 
 	fmt.Fprintf(os.Stderr, "expected=%d..%d; got=%d; bad_keys=%d; bad_values=%d; missed=%d\n", minExcepted, maxExcepted, correct, badKeys, badValues, missed)
 	util.AssertLessThanOrEqual(minExcepted, correct, "correct >= minExcepted", t.t)
@@ -213,7 +213,7 @@ func (t *corruptionTest) value(k int) []byte {
 
 func TestRecovery(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.build(100)
 	test.check(100, 100)
 	test.corrupt(logFile, 19, 1)
@@ -225,14 +225,14 @@ func TestRecovery(t *testing.T) {
 
 func TestRecoverWriteError(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.env.writableFileError = true
 	util.AssertError(test.tryReopen(), "tryReopen", t)
 }
 
 func TestNewFileErrorDuringWrite(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.env.writableFileError = true
 	num := 3 + ssdb.NewOptions().WriteBufferSize/corruptionValueSize
 	var (
@@ -252,7 +252,7 @@ func TestNewFileErrorDuringWrite(t *testing.T) {
 
 func TestTableFile(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.build(100)
 	dbi := test.db.(*db)
 	_ = dbi.testCompactMemTable()
@@ -265,7 +265,7 @@ func TestTableFile(t *testing.T) {
 
 func TestFileRepair(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.options.BlockSize = 2 * corruptionValueSize
 	test.options.ParanoidChecks = true
 	test.reopen()
@@ -283,19 +283,19 @@ func TestFileRepair(t *testing.T) {
 
 func TestTableFileIndexData(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.build(10000)
 	dbi := test.db.(*db)
 	_ = dbi.testCompactMemTable()
 
-	test.corrupt(tableFile, -2500, 500)
+	test.corrupt(tableFile, -2000, 500)
 	test.reopen()
 	test.check(5000, 9999)
 }
 
 func TestMissingDescriptor(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.build(1000)
 	test.repairDB()
 	test.reopen()
@@ -304,7 +304,7 @@ func TestMissingDescriptor(t *testing.T) {
 
 func TestSequenceNumberRecovery(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	util.AssertNotError(test.db.Put(ssdb.NewWriteOptions(), []byte("foo"), []byte("v1")), "Write", t)
 	util.AssertNotError(test.db.Put(ssdb.NewWriteOptions(), []byte("foo"), []byte("v2")), "Write", t)
 	util.AssertNotError(test.db.Put(ssdb.NewWriteOptions(), []byte("foo"), []byte("v3")), "Write", t)
@@ -328,7 +328,7 @@ func TestSequenceNumberRecovery(t *testing.T) {
 
 func TestCorruptedDescriptor(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	util.AssertNotError(test.db.Put(ssdb.NewWriteOptions(), []byte("foo"), []byte("hello")), "Put", t)
 	dbi := test.db.(*db)
 	_ = dbi.testCompactMemTable()
@@ -347,7 +347,7 @@ func TestCorruptedDescriptor(t *testing.T) {
 
 func TestCompactionInputError(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.build(10)
 	dbi := test.db.(*db)
 	_ = dbi.testCompactMemTable()
@@ -363,7 +363,7 @@ func TestCompactionInputError(t *testing.T) {
 
 func TestCompactionInputErrorParanoid(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.options.ParanoidChecks = true
 	test.options.WriteBufferSize = 512 << 10
 	test.reopen()
@@ -382,7 +382,7 @@ func TestCompactionInputErrorParanoid(t *testing.T) {
 
 func TestUnrelatedKeys(t *testing.T) {
 	test := newCorruptionTest(t)
-	defer test.finalize()
+	defer test.finish()
 	test.build(10)
 	dbi := test.db.(*db)
 	_ = dbi.testCompactMemTable()

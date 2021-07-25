@@ -84,7 +84,7 @@ func (h *Histogram) String() string {
 	} else {
 		fmt.Fprintf(buffer, "Min: %.4f  Median: %.4f  Max: %.4f\n", h.min, h.median(), h.max)
 	}
-	fmt.Fprintln(buffer, "------------------------------------------------------")
+	_, _ = fmt.Fprintln(buffer, "------------------------------------------------------")
 
 	multi := 100.0 / h.num
 	sum := 0.0

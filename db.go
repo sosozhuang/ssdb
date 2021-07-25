@@ -24,5 +24,5 @@ type DB interface {
 	GetProperty(property string) (string, bool)
 	GetApproximateSizes(r []Range) []uint64
 	CompactRange(begin, end []byte)
-	Close()
+	Closer
 }

@@ -18,11 +18,11 @@ func (n *cleanUpNode) run() {
 }
 
 func (n *cleanUpNode) finalize() {
-	if f, ok := n.arg1.(ssdb.Finalizer); ok {
-		f.Finalize()
+	if c, ok := n.arg1.(ssdb.Clearer); ok {
+		c.Clear()
 	}
-	if f, ok := n.arg2.(ssdb.Finalizer); ok {
-		f.Finalize()
+	if c, ok := n.arg2.(ssdb.Clearer); ok {
+		c.Clear()
 	}
 }
 
@@ -47,7 +47,7 @@ func (i *CleanUpIterator) RegisterCleanUp(function ssdb.CleanUpFunction, arg1, a
 	node.arg2 = arg2
 }
 
-func (i *CleanUpIterator) Finalize() {
+func (i *CleanUpIterator) Close() {
 	if !i.cleanUpHead.isEmpty() {
 		i.cleanUpHead.run()
 		for node := i.cleanUpHead.next; node != nil; {
@@ -74,7 +74,7 @@ func (_ *emptyIterator) SeekToFirst() {
 func (_ *emptyIterator) SeekToLast() {
 }
 
-func (_ *emptyIterator) Seek(target []byte) {
+func (_ *emptyIterator) Seek(_ []byte) {
 }
 
 func (_ *emptyIterator) Next() {

@@ -34,7 +34,7 @@ func testInternalKey(key string, seq sequenceNumber, vt ssdb.ValueType, t *testi
 		valueType: ssdb.TypeValue,
 	}
 	util.AssertTrue(parseInternalKey(encoded, &decoded), "parseInternalKey(encoded, &decoded)", t)
-	util.AssertEqual(string(key), string(decoded.userKey), "key", t)
+	util.AssertEqual(key, string(decoded.userKey), "key", t)
 	util.AssertEqual(seq, decoded.sequence, "sequence", t)
 	util.AssertEqual(vt, decoded.valueType, "valueType", t)
 	util.AssertTrue(!parseInternalKey([]byte("bar"), &decoded), "parseInternalKey", t)

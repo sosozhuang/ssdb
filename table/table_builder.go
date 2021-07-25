@@ -4,6 +4,7 @@ import (
 	"github.com/golang/snappy"
 	"ssdb"
 	"ssdb/util"
+	"unsafe"
 )
 
 type builder struct {
@@ -56,7 +57,13 @@ func (b *builder) Add(key, value []byte) {
 		r.filterBlock.addKey(key)
 	}
 
-	r.lastKey = key
+	if l1, l2 := len(r.lastKey), len(key); l1 < l2 {
+		r.lastKey = make([]byte, l2)
+	} else if l1 > l2 {
+		r.lastKey = r.lastKey[:l2]
+	}
+	//r.lastKey = make([]byte, len(key))
+	copy(r.lastKey, key)
 	r.numEntries++
 	r.dataBlock.add(key, value)
 	if estimatedBlockSize := r.dataBlock.currentSizeEstimate(); estimatedBlockSize >= r.options.BlockSize {
@@ -161,7 +168,7 @@ func (b *builder) FileSize() uint64 {
 	return b.rep.offset
 }
 
-func (b *builder) Finalize() {
+func (b *builder) Close() {
 	if !b.rep.closed {
 		panic("builder: rep.closed is false")
 	}
@@ -189,7 +196,6 @@ func (b *builder) writeBlock(block *blockBuilder, handle *blockHandle) {
 	case ssdb.NoCompression:
 		blockContents = raw
 	case ssdb.SnappyCompression:
-		//compressed := r.compressedOutput
 		if compressed := snappy.Encode(nil, raw); len(compressed) < len(raw)-len(raw)/8 {
 			blockContents = compressed
 		} else {
@@ -198,24 +204,21 @@ func (b *builder) writeBlock(block *blockBuilder, handle *blockHandle) {
 		}
 	}
 	b.writeRawBlock(blockContents, t, handle)
-	//r.compressedOutput = nil
 	block.reset()
 }
 
 func (b *builder) writeRawBlock(blockContents []byte, t ssdb.CompressionType, handle *blockHandle) {
 	r := b.rep
-	handle.setOffset(r.offset)
-	handle.setSize(uint64(len(blockContents)))
+	handle.offset = r.offset
+	handle.size = uint64(len(blockContents))
 	r.err = r.file.Append(blockContents)
 	if r.err == nil {
-		var trailer [blockTrailerSize]byte
+		trailer := make([]byte, blockTrailerSize)
 		trailer[0] = byte(t)
 		crc := util.ChecksumValue(blockContents)
 		crc = util.ChecksumExtend(crc, trailer[:1])
-		var bs [4]byte
-		util.EncodeFixed32(&bs, util.MaskChecksum(crc))
-		copy(trailer[1:], bs[:])
-		r.err = r.file.Append(trailer[:])
+		util.EncodeFixed32((*[4]byte)(unsafe.Pointer(&trailer[1])), util.MaskChecksum(crc))
+		r.err = r.file.Append(trailer)
 		if r.err == nil {
 			r.offset += uint64(len(blockContents)) + blockTrailerSize
 		}
@@ -236,7 +239,6 @@ type builderRep struct {
 	filterBlock       *filterBlockBuilder
 	pendingIndexEntry bool
 	pendingHandle     *blockHandle
-	//compressedOutput  []byte
 }
 
 func newBuilderRep(options *ssdb.Options, f ssdb.WritableFile) *builderRep {

@@ -7,42 +7,42 @@ import (
 	"unsafe"
 )
 
-type MemTable struct {
+type memTable struct {
 	comparator  *keyComparator
 	refs        int
 	table       *skipList
 	memoryUsage uint64
 }
 
-func (t *MemTable) ref() {
+func (t *memTable) ref() {
 	t.refs++
 }
 
-func (t *MemTable) unref() {
+func (t *memTable) unref() {
 	t.refs--
-	//if t.refs < 0 {
-	//	panic("refs < 0")
-	//}
+	if t.refs < 0 {
+		panic("refs < 0")
+	}
 	if t.refs <= 0 {
 		t.release()
 	}
 }
 
-func (t *MemTable) release() {
-	//if t.refs != 0 {
-	//	panic("memTable: refs != 0")
-	//}
+func (t *memTable) release() {
+	if t.refs != 0 {
+		panic("memTable: refs != 0")
+	}
 }
 
-func (t *MemTable) approximateMemoryUsage() uint64 {
+func (t *memTable) approximateMemoryUsage() uint64 {
 	return t.memoryUsage
 }
 
-func (t *MemTable) newIterator() ssdb.Iterator {
+func (t *memTable) newIterator() ssdb.Iterator {
 	return newMemTableIterator(t.table)
 }
 
-func (t *MemTable) add(seq sequenceNumber, vt ssdb.ValueType, key, value []byte) {
+func (t *memTable) add(seq sequenceNumber, vt ssdb.ValueType, key, value []byte) {
 	// Format of an entry is concatenation of:
 	//  key_size     : varint32 of internal_key.size()
 	//  key bytes    : char[internal_key.size()]
@@ -61,9 +61,9 @@ func (t *MemTable) add(seq sequenceNumber, vt ssdb.ValueType, key, value []byte)
 	i += 8
 	i += util.EncodeVarInt32((*[5]byte)(unsafe.Pointer(&buf[i])), uint32(valSize))
 	copy(buf[i:], value)
-	//if i+valSize != encodedLen {
-	//	panic("memtable: i + valSize != encodedLen")
-	//}
+	if i+valSize != encodedLen {
+		panic("memtable: i + valSize != encodedLen")
+	}
 	t.table.insert(buf)
 }
 
@@ -82,7 +82,7 @@ func copyMemoryToPointer(pointer unsafe.Pointer, src []byte) {
 	}
 }
 
-func (t *MemTable) get(key *lookupKey, value *[]byte) (error, bool) {
+func (t *memTable) get(key *lookupKey, value *[]byte) (error, bool) {
 	memKey := key.memtableKey()
 	iter := newSkipListIterator(t.table)
 	iter.seek(memKey)
@@ -100,9 +100,9 @@ func (t *MemTable) get(key *lookupKey, value *[]byte) (error, bool) {
 		//keyLenPtr := *(*[5]byte)(entry)
 		var keyLen uint32
 		i := util.GetVarInt32Ptr(entry, &keyLen)
-		userKey := make([]byte, int(keyLen)-8)
+		userKey := entry[i : i+int(keyLen)-8]
 		//copyMemoryToSlice(&userKey, unsafe.Pointer(uintptr(entry)+uintptr(i)), len(userKey))
-		copy(userKey, entry[i:])
+		//copy(userKey, entry[i:])
 		if t.comparator.comparator.userComparator.Compare(userKey, key.userKey()) == 0 {
 			//tagPtr := *(*[8]byte)(unsafe.Pointer(uintptr(entry) + uintptr(i) + uintptr(keyLen-8)))
 			tag := util.DecodeFixed64(entry[i+int(keyLen)-8:])
@@ -120,8 +120,8 @@ func (t *MemTable) get(key *lookupKey, value *[]byte) (error, bool) {
 	return nil, false
 }
 
-func NewMemTable(comparator *internalKeyComparator) *MemTable {
-	t := &MemTable{
+func newMemTable(comparator *internalKeyComparator) *memTable {
+	t := &memTable{
 		comparator: &keyComparator{comparator},
 		refs:       0,
 	}
@@ -149,14 +149,8 @@ func copyMemoryToSlice(dst *[]byte, pointer unsafe.Pointer, l int) {
 
 func getLengthPrefixedSlice(data []byte) []byte {
 	var l uint32
-	//data := *(*[5]byte)(pointer)
-	p := util.GetVarInt32Ptr(data, &l)
-	return data[p:]
-	//dst := make([]byte, l)
-	//copy(dst, data[p:])
-	//pointer = unsafe.Pointer(uintptr(pointer) + uintptr(p))
-	//copyMemoryToSlice(&dst, pointer, int(l))
-	//return dst
+	p := util.GetVarInt32Ptr(data[:5], &l)
+	return data[p : p+int(l)]
 }
 
 func (c *keyComparator) compare(a, b skipListKey) int {
@@ -226,7 +220,7 @@ func newMemTableIterator(list *skipList) *memTableIterator {
 
 type memTableInserter struct {
 	seq sequenceNumber
-	mem *MemTable
+	mem *memTable
 }
 
 func (i *memTableInserter) Put(key, value []byte) {

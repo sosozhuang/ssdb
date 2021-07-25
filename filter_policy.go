@@ -7,7 +7,7 @@ import (
 type FilterPolicy interface {
 	Name() string
 	CreateFilter(keys [][]byte, dst *[]byte)
-	KeyMayMatch(key []byte, filter []byte) bool
+	KeyMayMatch(key, filter []byte) bool
 }
 
 type bloomFilterPolicy struct {
@@ -25,16 +25,16 @@ func (b *bloomFilterPolicy) CreateFilter(keys [][]byte, dst *[]byte) {
 	if bits < 64 {
 		bits = 64
 	}
-	bs := (bits + 7) / 8
-	bits = bs * 8
+	bytes := (bits + 7) / 8
+	bits = bytes * 8
 	initSize := len(*dst)
-	*dst = append(*dst, make([]byte, bs)...)
+	*dst = append(*dst, make([]byte, bytes)...)
 	*dst = append(*dst, byte(b.k))
 	array := (*dst)[initSize:]
 	var h, delta, bitpos uint32
 	for i := 0; i < n; i++ {
 		h = bloomHash(keys[i])
-		delta = h>>17 | h<<15
+		delta = (h >> 17) | (h << 15)
 		for j := uint(0); j < b.k; j++ {
 			bitpos = h % uint32(bits)
 			array[bitpos/8] |= 1 << (bitpos % 8)
@@ -43,7 +43,7 @@ func (b *bloomFilterPolicy) CreateFilter(keys [][]byte, dst *[]byte) {
 	}
 }
 
-func (b *bloomFilterPolicy) KeyMayMatch(key []byte, filter []byte) bool {
+func (b *bloomFilterPolicy) KeyMayMatch(key, filter []byte) bool {
 	l := len(filter)
 	if l < 2 {
 		return false
@@ -54,7 +54,7 @@ func (b *bloomFilterPolicy) KeyMayMatch(key []byte, filter []byte) bool {
 		return true
 	}
 	h := bloomHash(key)
-	delta := h>>17 | h<<15
+	delta := (h >> 17) | (h << 15)
 	var bitpos uint32
 	for j := uint(0); j < k; j++ {
 		bitpos = h % uint32(bits)

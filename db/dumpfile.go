@@ -48,7 +48,7 @@ func printLogContents(env ssdb.Env, name string, f func(uint64, []byte, ssdb.Wri
 			f(reader.lastRecordOffset, record, dst)
 		}
 	}
-	file.Finalize()
+	file.Close()
 	return
 }
 
@@ -130,10 +130,10 @@ func dumpTable(env ssdb.Env, fname string, dst ssdb.WritableFile) error {
 	}
 	if err != nil {
 		if t != nil {
-			t.Finalize()
+			t.Close()
 		}
 		if file != nil {
-			file.Finalize()
+			file.Close()
 		}
 		return err
 	}
@@ -173,9 +173,9 @@ func dumpTable(env ssdb.Env, fname string, dst ssdb.WritableFile) error {
 	if err = iter.Status(); err != nil {
 		_ = dst.Append([]byte("iterator error: " + err.Error() + "\n"))
 	}
-	iter.Finalize()
-	t.Finalize()
-	file.Finalize()
+	iter.Close()
+	t.Close()
+	file.Close()
 	return nil
 }
 

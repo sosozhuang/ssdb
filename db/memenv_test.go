@@ -15,6 +15,10 @@ func newMemEnvTest() *memEnvTest {
 	return &memEnvTest{env: newMemEnv(ssdb.DefaultEnv())}
 }
 
+func (t *memEnvTest) finish() {
+	t.env.(*inMemoryEnv).finalize()
+}
+
 func TestBasics(t *testing.T) {
 	test := newMemEnvTest()
 	util.AssertNotError(test.env.CreateDir("/dir"), "CreateDir", t)
@@ -31,7 +35,7 @@ func TestBasics(t *testing.T) {
 	fileSize, err := test.env.GetFileSize("/dir/f")
 	util.AssertNotError(err, "GetFileSize", t)
 	util.AssertEqual(0, fileSize, "fileSize", t)
-	writableFile.Finalize()
+	_ = writableFile.Close()
 
 	util.AssertTrue(test.env.FileExists("/dir/f"), "FileExists", t)
 	fileSize, err = test.env.GetFileSize("/dir/f")
@@ -43,7 +47,7 @@ func TestBasics(t *testing.T) {
 	writableFile, err = test.env.NewWritableFile("/dir/f")
 	util.AssertNotError(err, "NewWritableFile", t)
 	util.AssertNotError(writableFile.Append([]byte("abc")), "Append", t)
-	writableFile.Finalize()
+	_ = writableFile.Close()
 
 	writableFile, err = test.env.NewAppendableFile("/dir/f")
 	util.AssertNotError(err, "NewAppendableFile", t)
@@ -51,7 +55,7 @@ func TestBasics(t *testing.T) {
 	util.AssertNotError(err, "GetFileSize", t)
 	util.AssertEqual(3, fileSize, "fileSize", t)
 	util.AssertNotError(writableFile.Append([]byte("hello")), "Append", t)
-	writableFile.Finalize()
+	_ = writableFile.Close()
 
 	fileSize, err = test.env.GetFileSize("/dir/f")
 	util.AssertNotError(err, "GetFileSize", t)
@@ -90,7 +94,7 @@ func TestMemEnvReadWrite(t *testing.T) {
 	util.AssertNotError(err, "NewWritableFile", t)
 	util.AssertNotError(writableFile.Append([]byte("hello ")), "Append", t)
 	util.AssertNotError(writableFile.Append([]byte("world")), "Append", t)
-	writableFile.Finalize()
+	_ = writableFile.Close()
 
 	seqFile, err := test.env.NewSequentialFile("/dir/f")
 	util.AssertNotError(err, "NewSequentialFile", t)
@@ -109,7 +113,7 @@ func TestMemEnvReadWrite(t *testing.T) {
 	result, _, err = seqFile.Read(b)
 	util.AssertNotError(err, "Read", t)
 	util.AssertEqual(0, len(result), "result", t)
-	seqFile.Finalize()
+	seqFile.Close()
 
 	randFile, err := test.env.NewRandomAccessFile("/dir/f")
 	util.AssertNotError(err, "NewRandomAccessFile", t)
@@ -128,7 +132,7 @@ func TestMemEnvReadWrite(t *testing.T) {
 	b = make([]byte, 5)
 	_, _, err = randFile.Read(b, 1000)
 	util.AssertError(err, "Read", t)
-	randFile.Finalize()
+	randFile.Close()
 }
 
 func TestLocks(t *testing.T) {
@@ -151,7 +155,7 @@ func TestMisc(t *testing.T) {
 	util.AssertNotError(writableFile.Sync(), "Sync", t)
 	util.AssertNotError(writableFile.Flush(), "Flush", t)
 	util.AssertNotError(writableFile.Close(), "Close", t)
-	writableFile.Finalize()
+	_ = writableFile.Close()
 }
 
 func TestLargeWrite(t *testing.T) {
@@ -168,7 +172,7 @@ func TestLargeWrite(t *testing.T) {
 	util.AssertNotError(err, "NewWritableFile", t)
 	util.AssertNotError(writableFile.Append([]byte("foo")), "Append", t)
 	util.AssertNotError(writableFile.Append(writeData), "Append", t)
-	writableFile.Finalize()
+	_ = writableFile.Close()
 
 	seqFile, err := test.env.NewSequentialFile("/dir/f")
 	util.AssertNotError(err, "NewSequentialFile", t)
@@ -186,7 +190,7 @@ func TestLargeWrite(t *testing.T) {
 		read += len(result)
 	}
 	util.AssertEqual(readData, writeData, "read write data", t)
-	seqFile.Finalize()
+	seqFile.Close()
 }
 
 func TestOverwriteOpenFile(t *testing.T) {
@@ -194,7 +198,7 @@ func TestOverwriteOpenFile(t *testing.T) {
 
 	write1Data := "Write #1 data"
 	fileDataLen := len(write1Data)
-	testFileName := tmpDir() + "/leveldb-TestFile.dat"
+	testFileName := tmpDir() + "/ssdb-TestFile.dat"
 
 	err := ssdb.WriteStringToFile(test.env, write1Data, testFileName)
 	util.AssertNotError(err, "WriteStringToFile", t)
@@ -211,7 +215,7 @@ func TestOverwriteOpenFile(t *testing.T) {
 	util.AssertNotError(err, "Read", t)
 	util.AssertEqual(0, bytes.Compare(result, []byte(write2Data)), "Compare", t)
 
-	randFile.Finalize()
+	randFile.Close()
 }
 
 func TestDBTest(t *testing.T) {
@@ -245,7 +249,7 @@ func TestDBTest(t *testing.T) {
 		iterator.Next()
 	}
 	util.AssertFalse(iterator.Valid(), "Valid", t)
-	iterator.Finalize()
+	iterator.Close()
 
 	dbi := d.(*db)
 	util.AssertNotError(dbi.testCompactMemTable(), "testCompactMemTable", t)

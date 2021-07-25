@@ -56,9 +56,9 @@ func (c *tableCache) get(options *ssdb.ReadOptions, fileNumber, fileSize uint64,
 }
 
 func (c *tableCache) evict(fileNumber uint64) {
-	var buf [8]byte
-	util.EncodeFixed64(&buf, fileNumber)
-	c.cache.Erase(buf[:])
+	buf := make([]byte, 8)
+	util.EncodeFixed64((*[8]byte)(unsafe.Pointer(&buf[0])), fileNumber)
+	c.cache.Erase(buf)
 }
 
 func (c *tableCache) findTable(fileNumber, fileSize uint64) (handle ssdb.Handle, err error) {
@@ -83,7 +83,9 @@ func (c *tableCache) findTable(fileNumber, fileSize uint64) (handle ssdb.Handle,
 			if t != nil {
 				panic("tableCache: t != nil")
 			}
-			file.Finalize()
+			if file != nil {
+				file.Close()
+			}
 		} else {
 			tf := &tableAndFile{
 				file:  file,
@@ -95,8 +97,8 @@ func (c *tableCache) findTable(fileNumber, fileSize uint64) (handle ssdb.Handle,
 	return
 }
 
-func (c *tableCache) finalize() {
-	c.cache.Finalize()
+func (c *tableCache) clear() {
+	c.cache.Clear()
 }
 
 type tableAndFile struct {
@@ -104,10 +106,10 @@ type tableAndFile struct {
 	table ssdb.Table
 }
 
-func deleteEntry(key []byte, value interface{}) {
+func deleteEntry(_ []byte, value interface{}) {
 	tf := value.(*tableAndFile)
-	tf.table.Finalize()
-	tf.file.Finalize()
+	tf.table.Close()
+	tf.file.Close()
 	tf = nil
 }
 

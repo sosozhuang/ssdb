@@ -9,7 +9,7 @@ import (
 
 func printContents(b ssdb.WriteBatch, t *testing.T) string {
 	cmp := newInternalKeyComparator(ssdb.BytewiseComparator)
-	mem := NewMemTable(cmp)
+	mem := newMemTable(cmp)
 	mem.ref()
 
 	var builder strings.Builder

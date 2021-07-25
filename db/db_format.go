@@ -132,7 +132,7 @@ type internalKey struct {
 }
 
 func (k *internalKey) decodeFrom(b []byte) {
-	k.rep = make([]byte, len(b), len(b))
+	k.rep = make([]byte, len(b))
 	copy(k.rep, b)
 }
 
@@ -145,12 +145,12 @@ func (k *internalKey) userKey() []byte {
 }
 
 func (k *internalKey) setFrom(key *parsedInternalKey) {
-	k.rep = make([]byte, 0)
+	k.rep = k.rep[:0]
 	appendInternalKey(&k.rep, key)
 }
 
 func (k *internalKey) clear() {
-	k.rep = make([]byte, 0)
+	k.rep = k.rep[:0]
 }
 
 func (k *internalKey) debugString() string {

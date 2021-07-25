@@ -162,15 +162,15 @@ func TestStrings(t *testing.T) {
 	PutLengthPrefixedSlice(&b, []byte(s))
 
 	var v []byte
-	AssertTrue(GetLengthPrefixedSlice2(&b, &v), "GetLengthPrefixedSlice2", t)
+	AssertTrue(GetLengthPrefixedSlice(&b, &v), "GetLengthPrefixedSlice", t)
 	AssertEqual("", string(v), "empty string", t)
 
-	AssertTrue(GetLengthPrefixedSlice2(&b, &v), "GetLengthPrefixedSlice2", t)
+	AssertTrue(GetLengthPrefixedSlice(&b, &v), "GetLengthPrefixedSlice", t)
 	AssertEqual("foo", string(v), "foo", t)
 
-	AssertTrue(GetLengthPrefixedSlice2(&b, &v), "GetLengthPrefixedSlice2", t)
+	AssertTrue(GetLengthPrefixedSlice(&b, &v), "GetLengthPrefixedSlice", t)
 	AssertEqual("bar", string(v), "bar", t)
-	AssertTrue(GetLengthPrefixedSlice2(&b, &v), "GetLengthPrefixedSlice2", t)
+	AssertTrue(GetLengthPrefixedSlice(&b, &v), "GetLengthPrefixedSlice", t)
 	AssertEqual(strings.Repeat("x", 200), string(v), "x*200", t)
 	AssertEqual(len(b), 0, "len(b)", t)
 }
