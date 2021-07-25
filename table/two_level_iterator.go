@@ -98,6 +98,12 @@ func (i *twoLevelIterator) Status() error {
 	return i.err
 }
 
+func (i *twoLevelIterator) Close() {
+	i.indexIter.close()
+	i.dataIter.close()
+	i.CleanUpIterator.Close()
+}
+
 func (i *twoLevelIterator) saveError(err error) {
 	if i.err == nil && err != nil {
 		i.err = err
