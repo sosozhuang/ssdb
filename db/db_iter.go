@@ -138,9 +138,9 @@ func (i *dbIter) Status() error {
 	return i.err
 }
 
-func (i *dbIter) Finalize() {
-	i.iter.Finalize()
-	i.CleanUpIterator.Finalize()
+func (i *dbIter) Close() {
+	i.iter.Close()
+	i.CleanUpIterator.Close()
 }
 
 func (i *dbIter) findNextUserEntry(skipping bool, skip *[]byte) {
@@ -193,7 +193,7 @@ func (i *dbIter) findPrevUserEntry() {
 					i.clearSavedValue()
 				} else {
 					rawValue := i.iter.Value()
-					i.savedValue = make([]byte, len(rawValue), len(rawValue))
+					i.savedValue = make([]byte, len(rawValue))
 					saveKey(extractUserKey(i.iter.Key()), &i.savedKey)
 					copy(i.savedValue, rawValue)
 				}
