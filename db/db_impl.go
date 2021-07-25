@@ -6,6 +6,7 @@ package db
 import "C"
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"sort"
 	"ssdb"
@@ -90,16 +91,7 @@ func clipToRangeInt(ptr *int, minValue, maxValue int) {
 	}
 }
 
-func clipToRangeUint(ptr *uint, minValue, maxValue uint) {
-	if *ptr > maxValue {
-		*ptr = maxValue
-	}
-	if *ptr < minValue {
-		*ptr = minValue
-	}
-}
-
-func sanitizeOptions(dbName string, iCmp *internalKeyComparator, iPolicy *internalFilterPolicy, src ssdb.Options) ssdb.Options {
+func sanitizeOptions(dbName string, iCmp *internalKeyComparator, iPolicy *internalFilterPolicy, src ssdb.Options) (ssdb.Options, func()) {
 	result := src
 	result.Comparator = iCmp
 	if src.FilterPolicy != nil {
@@ -111,18 +103,19 @@ func sanitizeOptions(dbName string, iCmp *internalKeyComparator, iPolicy *intern
 	clipToRangeInt(&result.WriteBufferSize, 64<<10, 1<<30)
 	clipToRangeInt(&result.MaxFileSize, 1<<20, 1<<30)
 	clipToRangeInt(&result.BlockSize, 1<<10, 4<<20)
+	f := func() {}
 	if result.InfoLog == nil {
 		_ = src.Env.CreateDir(dbName)
 		_ = src.Env.RenameFile(infoLogFileName(dbName), oldInfoLogFileName(dbName))
 		var err error
-		if result.InfoLog, err = src.Env.NewLogger(infoLogFileName(dbName)); err != nil {
-			result.InfoLog = nil
+		if result.InfoLog, f, err = src.Env.NewLogger(infoLogFileName(dbName)); err != nil {
+			result.InfoLog = log.New(ioutil.Discard, "", log.LstdFlags)
 		}
 	}
 	if result.BlockCache == nil {
 		result.BlockCache = ssdb.NewLRUCache(8 << 20)
 	}
-	return result
+	return result, f
 }
 
 func tableCacheSize(sanitizedOptions *ssdb.Options) int {
@@ -134,6 +127,7 @@ type db struct {
 	internalComparator            internalKeyComparator
 	internalFilterPolicy          internalFilterPolicy
 	options                       ssdb.Options
+	closeFunc                     func()
 	ownsInfoLog                   bool
 	ownsCache                     bool
 	dbName                        string
@@ -142,8 +136,8 @@ type db struct {
 	mutex                         sync.Mutex
 	shuttingDown                  util.AtomicBool
 	backgroundWorkFinishedSignal  *sync.Cond
-	mem                           *MemTable
-	imm                           *MemTable
+	mem                           *memTable
+	imm                           *memTable
 	hasImm                        util.AtomicBool
 	logFile                       ssdb.WritableFile
 	logFileNumber                 uint64
@@ -182,7 +176,7 @@ func newDB(rawOptions *ssdb.Options, dbName string) *db {
 		backgroundCompactionScheduled: false,
 		manualCompaction:              nil,
 	}
-	result.options = sanitizeOptions(dbName, &result.internalComparator, &result.internalFilterPolicy, *rawOptions)
+	result.options, result.closeFunc = sanitizeOptions(dbName, &result.internalComparator, &result.internalFilterPolicy, *rawOptions)
 	result.ownsInfoLog = result.options.InfoLog != rawOptions.InfoLog
 	result.ownsCache = result.options.BlockCache != rawOptions.BlockCache
 	result.tableCache = newTableCache(result.dbName, &result.options, tableCacheSize(&result.options))
@@ -209,8 +203,9 @@ func (d *db) newDB() error {
 	edit.encodeTo(&record)
 	if err = log.addRecord(record); err == nil {
 		err = file.Close()
+	} else {
+		_ = file.Close()
 	}
-	file.Finalize()
 	if err == nil {
 		err = setCurrentFile(d.env, d.dbName, 1)
 	} else {
@@ -222,7 +217,7 @@ func (d *db) newDB() error {
 func (d *db) maybeIgnoreError(err *error) {
 	if *err == nil || d.options.ParanoidChecks {
 	} else {
-		ssdb.Log(d.options.InfoLog, "Ignoring error %v.\n", *err)
+		d.options.InfoLog.Printf("Ignoring error %v.\n", *err)
 		*err = nil
 	}
 }
@@ -259,7 +254,7 @@ func (d *db) deleteObsoleteFiles() {
 				if ft == tableFile {
 					d.tableCache.evict(number)
 				}
-				ssdb.Log(d.options.InfoLog, "Delete type=%d #%d\n", ft, number)
+				d.options.InfoLog.Printf("Delete type=%d #%d\n", ft, number)
 				_ = d.env.DeleteFile(d.dbName + "/" + fileName)
 			}
 		}
@@ -276,7 +271,7 @@ func (d *db) Close() {
 	if d.dbLock != nil {
 		_ = d.env.UnlockFile(d.dbLock)
 	}
-	d.versions.finalize()
+	d.versions.close()
 	if d.mem != nil {
 		d.mem.unref()
 	}
@@ -286,15 +281,16 @@ func (d *db) Close() {
 	d.tmpBatch = nil
 	d.log = nil
 	if d.logFile != nil {
-		d.logFile.Finalize()
+		_ = d.logFile.Close()
 	}
-	d.tableCache.finalize()
+	d.tableCache.clear()
 	if d.ownsInfoLog {
 		d.options.InfoLog = nil
 	}
 	if d.ownsCache {
-		d.options.BlockCache.Finalize()
+		d.options.BlockCache.Clear()
 	}
+	d.closeFunc()
 }
 
 func testFflush() {
@@ -388,9 +384,9 @@ type dbLogReporter struct {
 
 func (r *dbLogReporter) corruption(bytes int, err error) {
 	if r.err == nil {
-		ssdb.Log(r.infoLog, "(ignoring error)%s: dropping %d bytes; %v.\n", r.fname, bytes, err)
+		r.infoLog.Printf("(ignoring error)%s: dropping %d bytes; %v.\n", r.fname, bytes, err)
 	} else {
-		ssdb.Log(r.infoLog, "%s: dropping %d bytes; %v.\n", r.fname, bytes, err)
+		r.infoLog.Printf("%s: dropping %d bytes; %v.\n", r.fname, bytes, err)
 	}
 	if r.err == nil {
 		r.err = err
@@ -415,11 +411,11 @@ func (d *db) recoverLogFile(logNumber uint64, lastLog bool, saveManifest *bool, 
 		reporter.err = nil
 	}
 	reader := newLogReader(file, &reporter, true, 0)
-	ssdb.Log(d.options.InfoLog, "Recovering log #%d.\n", logNumber)
+	d.options.InfoLog.Printf("Recovering log #%d.\n", logNumber)
 
 	var (
 		record []byte
-		mem    *MemTable
+		mem    *memTable
 	)
 	batch := ssdb.NewWriteBatch()
 	compactions := 0
@@ -434,7 +430,7 @@ func (d *db) recoverLogFile(logNumber uint64, lastLog bool, saveManifest *bool, 
 		wbi.SetContents(record)
 
 		if mem == nil {
-			mem = NewMemTable(&d.internalComparator)
+			mem = newMemTable(&d.internalComparator)
 			mem.ref()
 		}
 		err = insertInto(batch, mem)
@@ -457,7 +453,7 @@ func (d *db) recoverLogFile(logNumber uint64, lastLog bool, saveManifest *bool, 
 			}
 		}
 	}
-	file.Finalize()
+	file.Close()
 	if err == nil && d.options.ReuseLogs && lastLog && compactions == 0 {
 		if d.logFile != nil {
 			panic("db: logFile != nil")
@@ -474,14 +470,14 @@ func (d *db) recoverLogFile(logNumber uint64, lastLog bool, saveManifest *bool, 
 		)
 		if lFileSize, e = d.env.GetFileSize(fname); e == nil {
 			if d.logFile, e = d.env.NewAppendableFile(fname); e == nil {
-				ssdb.Log(d.options.InfoLog, "Reusing old log %s.\n", fname)
+				d.options.InfoLog.Printf("Reusing old log %s.\n", fname)
 				d.log = newLogWriterWithLength(d.logFile, uint64(lFileSize))
 				d.logFileNumber = logNumber
 				if mem != nil {
 					d.mem = mem
 					mem = nil
 				} else {
-					d.mem = NewMemTable(&d.internalComparator)
+					d.mem = newMemTable(&d.internalComparator)
 					d.mem.ref()
 				}
 			}
@@ -498,20 +494,20 @@ func (d *db) recoverLogFile(logNumber uint64, lastLog bool, saveManifest *bool, 
 	return err
 }
 
-func (d *db) writeLevel0Table(mem *MemTable, edit *versionEdit, base *version) (err error) {
+func (d *db) writeLevel0Table(mem *memTable, edit *versionEdit, base *version) (err error) {
 	startMicros := d.env.NowMicros()
 	meta := newFileMetaData()
 	meta.number = d.versions.newFileNumber()
 	d.pendingOutputs[meta.number] = struct{}{}
 	iter := mem.newIterator()
-	ssdb.Log(d.options.InfoLog, "Level-0 table #%d: started.\n", meta.number)
+	d.options.InfoLog.Printf("Level-0 table #%d: started.\n", meta.number)
 
 	d.mutex.Unlock()
 	err = buildTable(d.dbName, d.env, &d.options, d.tableCache, iter, meta)
 	d.mutex.Lock()
 
-	ssdb.Log(d.options.InfoLog, "Level-0 table #%d: %d bytes %v.\n", meta.number, meta.fileSize, err)
-	iter.Finalize()
+	d.options.InfoLog.Printf("Level-0 table #%d: %d bytes %v.\n", meta.number, meta.fileSize, err)
+	iter.Close()
 	delete(d.pendingOutputs, meta.number)
 
 	level := 0
@@ -691,7 +687,7 @@ func (d *db) backgroundCompaction() {
 		if !m.done {
 			doneStr = manualEnd.debugString()
 		}
-		ssdb.Log(d.options.InfoLog, "Manual compaction at level-%d from %s .. %s; will stop at %s.\n", m.level, beginStr, endStr, doneStr)
+		d.options.InfoLog.Printf("Manual compaction at level-%d from %s .. %s; will stop at %s.\n", m.level, beginStr, endStr, doneStr)
 	} else {
 		c = d.versions.pickCompaction()
 	}
@@ -708,7 +704,7 @@ func (d *db) backgroundCompaction() {
 		if err = d.versions.logAndApply(&c.edit, &d.mutex); err != nil {
 			d.recordBackgroundError(err)
 		}
-		ssdb.Log(d.options.InfoLog, "Moved #%d to level-%d %d bytes %s: %s.\n", f.number, c.level+1, f.fileSize, err, d.versions.levelSummary())
+		d.options.InfoLog.Printf("Moved #%d to level-%d %d bytes %s: %s.\n", f.number, c.level+1, f.fileSize, err, d.versions.levelSummary())
 	} else {
 		compact := newCompactionState(c)
 		if err = d.doCompactionWork(compact); err != nil {
@@ -719,12 +715,12 @@ func (d *db) backgroundCompaction() {
 		d.deleteObsoleteFiles()
 	}
 	if c != nil {
-		c.finalize()
+		c.finish()
 	}
 	if err == nil {
 	} else if d.shuttingDown.IsTrue() {
 	} else {
-		ssdb.Log(d.options.InfoLog, "Compaction error: %v.\n", err)
+		d.options.InfoLog.Printf("Compaction error: %v.\n", err)
 	}
 
 	if isManual {
@@ -743,14 +739,14 @@ func (d *db) backgroundCompaction() {
 func (d *db) cleanupCompaction(compact *compactionState) {
 	if compact.builder != nil {
 		compact.builder.Abandon()
-		compact.builder.Finalize()
+		compact.builder.Close()
 	} else {
 		if compact.outfile != nil {
 			panic("db: compact.outfile != nil")
 		}
 	}
 	if compact.outfile != nil {
-		compact.outfile.Finalize()
+		_ = compact.outfile.Close()
 	}
 	for _, output := range compact.outputs {
 		delete(d.pendingOutputs, output.number)
@@ -809,7 +805,7 @@ func (d *db) finishCompactionOutputFile(compact *compactionState, input ssdb.Ite
 	currentBytes := compact.builder.FileSize()
 	compact.currentOutput().fileSize = currentBytes
 	compact.totalBytes += currentBytes
-	compact.builder.Finalize()
+	compact.builder.Close()
 	compact.builder = nil
 
 	if err == nil {
@@ -817,22 +813,23 @@ func (d *db) finishCompactionOutputFile(compact *compactionState, input ssdb.Ite
 	}
 	if err == nil {
 		err = compact.outfile.Close()
+	} else {
+		_ = compact.outfile.Close()
 	}
-	compact.outfile.Finalize()
 	compact.outfile = nil
 	if err == nil && currentEntries > 0 {
 		iter := d.tableCache.newIterator(ssdb.NewReadOptions(), outputNumber, currentBytes, nil)
 		err = iter.Status()
-		iter.Finalize()
+		iter.Close()
 		if err == nil {
-			ssdb.Log(d.options.InfoLog, "Generated table #%d@%d: %d keys, %d bytes", outputNumber, compact.compaction.level, currentEntries, currentBytes)
+			d.options.InfoLog.Printf("Generated table #%d@%d: %d keys, %d bytes", outputNumber, compact.compaction.level, currentEntries, currentBytes)
 		}
 	}
 	return
 }
 
 func (d *db) installCompactionResults(compact *compactionState) error {
-	ssdb.Log(d.options.InfoLog, "Compacted %d@%d + %d@%d files => %d bytes", compact.compaction.numInputFiles(0), compact.compaction.level,
+	d.options.InfoLog.Printf("Compacted %d@%d + %d@%d files => %d bytes", compact.compaction.numInputFiles(0), compact.compaction.level,
 		compact.compaction.numInputFiles(1), compact.compaction.level+1, compact.totalBytes)
 	compact.compaction.addInputDeletions(&compact.compaction.edit)
 	level := compact.compaction.level
@@ -850,7 +847,7 @@ func (d *db) doCompactionWork(compact *compactionState) error {
 	startMicros := d.env.NowMicros()
 	immMicros := uint64(0)
 
-	ssdb.Log(d.options.InfoLog, "Compacting %d@%d + %d@%d files", compact.compaction.numInputFiles(0), compact.compaction.level,
+	d.options.InfoLog.Printf("Compacting %d@%d + %d@%d files", compact.compaction.numInputFiles(0), compact.compaction.level,
 		compact.compaction.numInputFiles(1), compact.compaction.level+1)
 	if d.versions.numLevelFiles(compact.compaction.level) <= 0 {
 		panic("db: versions.numLevelFiles(compact.compaction.level) <= 0")
@@ -946,7 +943,7 @@ func (d *db) doCompactionWork(compact *compactionState) error {
 	if err == nil {
 		err = input.Status()
 	}
-	input.Finalize()
+	input.Close()
 	input = nil
 
 	var stats compactionStats
@@ -969,18 +966,18 @@ func (d *db) doCompactionWork(compact *compactionState) error {
 		d.recordBackgroundError(err)
 	}
 
-	ssdb.Log(d.options.InfoLog, "compacted to: %s.\n", d.versions.levelSummary())
+	d.options.InfoLog.Printf("compacted to: %s.\n", d.versions.levelSummary())
 	return err
 }
 
 type iterState struct {
 	mu      *sync.Mutex
 	version *version
-	mem     *MemTable
-	imm     *MemTable
+	mem     *memTable
+	imm     *memTable
 }
 
-func cleanupIteratorState(arg1, arg2 interface{}) {
+func cleanupIteratorState(arg1, _ interface{}) {
 	state := arg1.(*iterState)
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -1244,10 +1241,10 @@ func (d *db) makeRoomForWrite(force bool) (err error) {
 		} else if !force && d.mem.approximateMemoryUsage() <= uint64(d.options.WriteBufferSize) {
 			break
 		} else if d.imm != nil {
-			ssdb.Log(d.options.InfoLog, "Current memtable full; waiting...\n")
+			d.options.InfoLog.Printf("Current memtable full; waiting...\n")
 			d.backgroundWorkFinishedSignal.Wait()
 		} else if d.versions.numLevelFiles(0) >= l0StopWritesTrigger {
-			ssdb.Log(d.options.InfoLog, "Too many L0 files; waiting...\n")
+			d.options.InfoLog.Printf("Too many L0 files; waiting...\n")
 			d.backgroundWorkFinishedSignal.Wait()
 		} else {
 			if d.versions.prevLogNumber != 0 {
@@ -1259,13 +1256,13 @@ func (d *db) makeRoomForWrite(force bool) (err error) {
 				d.versions.reuseFileNumber(newLogNumber)
 				break
 			}
-			d.logFile.Finalize()
+			_ = d.logFile.Close()
 			d.logFile = lfile
 			d.logFileNumber = newLogNumber
 			d.log = newLogWriter(lfile)
 			d.imm = d.mem
 			d.hasImm.SetTrue()
-			d.mem = NewMemTable(&d.internalComparator)
+			d.mem = newMemTable(&d.internalComparator)
 			d.mem.ref()
 			force = false
 			d.maybeScheduleCompaction()
@@ -1385,7 +1382,7 @@ func Open(options *ssdb.Options, dbName string) (db ssdb.DB, err error) {
 			impl.logFile = lfile
 			impl.logFileNumber = newLogNumber
 			impl.log = newLogWriter(lfile)
-			impl.mem = NewMemTable(&impl.internalComparator)
+			impl.mem = newMemTable(&impl.internalComparator)
 			impl.mem.ref()
 		}
 	}
