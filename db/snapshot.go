@@ -11,18 +11,18 @@ func newSnapshot(seq sequenceNumber) *snapshot {
 }
 
 type snapshotList struct {
-	head snapshot
+	head *snapshot
 }
 
 func newSnapshotList() *snapshotList {
 	head := newSnapshot(0)
 	head.prev = head
 	head.next = head
-	return &snapshotList{head: *head}
+	return &snapshotList{head: head}
 }
 
 func (l *snapshotList) empty() bool {
-	return l.head.next == &l.head
+	return l.head.next == l.head
 }
 
 func (l *snapshotList) oldest() *snapshot {
@@ -44,7 +44,7 @@ func (l *snapshotList) newSnapshot(seq sequenceNumber) *snapshot {
 		panic("snapshotList: !empty() && newest().sequenceNumber > seq")
 	}
 	snapshot := newSnapshot(seq)
-	snapshot.next = &l.head
+	snapshot.next = l.head
 	snapshot.prev = l.head.prev
 	snapshot.prev.next = snapshot
 	snapshot.next.prev = snapshot
