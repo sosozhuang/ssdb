@@ -1,6 +1,7 @@
 package db
 
 import (
+	"reflect"
 	"ssdb"
 	"ssdb/table"
 	"ssdb/util"
@@ -11,6 +12,7 @@ type memTable struct {
 	comparator  *keyComparator
 	refs        int
 	table       *skipList
+	arena       *util.Arena
 	memoryUsage uint64
 }
 
@@ -35,12 +37,16 @@ func (t *memTable) release() {
 }
 
 func (t *memTable) approximateMemoryUsage() uint64 {
-	return t.memoryUsage
+	return t.arena.MemoryUsage()
 }
 
 func (t *memTable) newIterator() ssdb.Iterator {
 	return newMemTableIterator(t.table)
 }
+
+const (
+	sliceHeaderSize = uint(unsafe.Sizeof(reflect.SliceHeader{}))
+)
 
 func (t *memTable) add(seq sequenceNumber, vt ssdb.ValueType, key, value []byte) {
 	// Format of an entry is concatenation of:
@@ -52,8 +58,12 @@ func (t *memTable) add(seq sequenceNumber, vt ssdb.ValueType, key, value []byte)
 	valSize := len(value)
 	internalKeySize := uint32(keySize + 8)
 	encodedLen := util.VarIntLength(uint64(internalKeySize)) + int(internalKeySize) + util.VarIntLength(uint64(valSize)) + valSize
-	t.memoryUsage += uint64(encodedLen)
-	buf := make([]byte, encodedLen)
+	pointer := t.arena.Allocate(uint(encodedLen) + sliceHeaderSize)
+	sh := (*reflect.SliceHeader)(pointer)
+	sh.Data = uintptr(pointer) + uintptr(sliceHeaderSize)
+	sh.Len = encodedLen
+	sh.Cap = encodedLen
+	buf := *(*[]byte)(pointer)
 	i := util.EncodeVarInt32((*[5]byte)(unsafe.Pointer(&buf[0])), internalKeySize)
 	copy(buf[i:], key)
 	i += keySize
@@ -124,8 +134,9 @@ func newMemTable(comparator *internalKeyComparator) *memTable {
 	t := &memTable{
 		comparator: &keyComparator{comparator},
 		refs:       0,
+		arena:      util.NewArena(),
 	}
-	t.table = newSkipList(t.comparator.compare)
+	t.table = newSkipList(t.comparator.compare, t.arena)
 	return t
 }
 
@@ -148,8 +159,15 @@ func copyMemoryToSlice(dst *[]byte, pointer unsafe.Pointer, l int) {
 }
 
 func getLengthPrefixedSlice(data []byte) []byte {
-	var l uint32
-	p := util.GetVarInt32Ptr(data[:5], &l)
+	var (
+		l uint32
+		p int
+	)
+	if len(data) >= 5 {
+		p = util.GetVarInt32Ptr(data[:5], &l)
+	} else {
+		p = util.GetVarInt32Ptr(data, &l)
+	}
 	return data[p : p+int(l)]
 }
 
@@ -160,7 +178,7 @@ func (c *keyComparator) compare(a, b skipListKey) int {
 }
 
 func encodeKey(scratch *[]byte, target []byte) []byte {
-	*scratch = make([]byte, 0)
+	*scratch = (*scratch)[:0]
 	util.PutVarInt32(scratch, uint32(len(target)))
 	*scratch = append(*scratch, target...)
 	return *scratch
