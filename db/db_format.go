@@ -1,10 +1,10 @@
 package db
 
 import (
-	"bytes"
 	"fmt"
 	"ssdb"
 	"ssdb/util"
+	"strings"
 	"unsafe"
 )
 
@@ -30,10 +30,10 @@ type parsedInternalKey struct {
 }
 
 func (k *parsedInternalKey) debugString() string {
-	buffer := bytes.NewBufferString("'")
-	fmt.Fprintf(buffer, "' @ %d : %d", k.sequence, int(k.valueType))
-	fmt.Fprintf(buffer, "%s", util.EscapeString(k.userKey))
-	return buffer.String()
+	var b strings.Builder
+	fmt.Fprintf(&b, "'%s", util.EscapeString(k.userKey))
+	fmt.Fprintf(&b, "' @ %d : %d", k.sequence, int(k.valueType))
+	return b.String()
 }
 
 func internalKeyEncodingLength(key *parsedInternalKey) int {

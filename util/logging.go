@@ -11,12 +11,17 @@ func AppendNumberTo(w io.Writer, num uint64) {
 	fmt.Fprintf(w, "%d", num)
 }
 
-func AppendEscapedStringTo(w io.Writer, value []byte) {
+type LogWriter interface {
+	io.ByteWriter
+	io.StringWriter
+}
+
+func AppendEscapedStringTo(w LogWriter, value []byte) {
 	for _, v := range value {
 		if v >= ' ' && v <= '~' {
-			fmt.Fprint(w, v)
+			_ = w.WriteByte(v)
 		} else {
-			fmt.Fprintf(w, "\\x%02x", v&0xff)
+			_, _ = w.WriteString(fmt.Sprintf("\\x%02x", v&0xff))
 		}
 	}
 }
