@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/golang/snappy"
 	"os"
+	"path"
 	"runtime/pprof"
 	"ssdb"
 	"ssdb/db"
@@ -49,6 +50,7 @@ var (
 	flagsUseExistingDB    = false
 	flagsReuseLogs        = false
 	flagsDB               = ""
+	flagsCPUProfile       = false
 )
 
 var env ssdb.Env
@@ -64,9 +66,10 @@ func newRandomGenerator() *randomGenerator {
 		pos:  0,
 	}
 	rnd := util.NewRandom(301)
+	buf := bytes.NewBuffer(make([]byte, 0, 100))
 	for len(g.data) < 1048576 {
-		piece := util.CompressibleString(rnd, flagsCompressionRatio, 100)
-		g.data = append(g.data, piece...)
+		util.CompressibleBytes(rnd, flagsCompressionRatio, 100, buf)
+		g.data = append(g.data, buf.Bytes()[:100]...)
 	}
 	return g
 }
@@ -314,6 +317,26 @@ func printEnvironment() {
 func (b *benchmark) run() {
 	b.printHeader()
 	b.open()
+	if flagsCPUProfile {
+		fname := path.Join(flagsDB, "cpu")
+		file, err := env.NewWritableFile(fname)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			return
+		}
+		buf := bytes.NewBuffer(make([]byte, 0, 256))
+		if err = pprof.StartCPUProfile(buf); err != nil {
+			fmt.Fprintf(os.Stderr, "cpu profiling not supported\n")
+			_ = env.DeleteFile(fname)
+		}
+		defer func() {
+			if err == nil {
+				pprof.StopCPUProfile()
+				_ = file.Append(buf.Bytes())
+			}
+			_ = file.Close()
+		}()
+	}
 	for _, name := range flagsBenchmarks {
 		b.num = flagsNum
 		if flagsReads < 0 {
@@ -414,6 +437,10 @@ func (b *benchmark) run() {
 		if method != nil {
 			b.runBenchmark(numThreads, name, method)
 		}
+	}
+
+	if flagsCPUProfile {
+
 	}
 }
 
@@ -543,18 +570,21 @@ func (b *benchmark) doWrite(thread *threadState, seq bool) {
 	}
 	gen := newRandomGenerator()
 	batch := ssdb.NewWriteBatch()
-	var err error
+	var (
+		err  error
+		j, k int
+	)
 	bs := int64(0)
-	for i := 0; i < flagsNum; i += b.entriesPerBatch {
+	buf := bytes.NewBuffer(make([]byte, 0, 100))
+	for i := 0; i < b.num; i += b.entriesPerBatch {
 		batch.Clear()
-		for j := 0; j < b.entriesPerBatch; j++ {
-			var k int
+		for j = 0; j < b.entriesPerBatch; j++ {
 			if seq {
 				k = i + j
 			} else {
 				k = int(thread.rand.Next()) % flagsNum
 			}
-			buf := bytes.NewBuffer(make([]byte, 0, 100))
+			buf.Truncate(0)
 			fmt.Fprintf(buf, "%016d", k)
 			batch.Put(buf.Bytes(), gen.generate(b.valueSize))
 			bs += int64(b.valueSize + buf.Len())
@@ -729,7 +759,7 @@ func (b *benchmark) printStats(key string) {
 
 func (b *benchmark) heapProfile() {
 	b.heapCounter++
-	fname := fmt.Sprintf("%s/heap-%04d", flagsDB, b.heapCounter)
+	fname := path.Join(flagsDB, fmt.Sprintf("heap-%04d", b.heapCounter))
 	file, err := env.NewWritableFile(fname)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -824,6 +854,8 @@ func main() {
 			flagsOpenFiles = value
 		} else if strings.HasPrefix(arg, "--db=") {
 			flagsDB = strings.TrimPrefix(arg, "--db=")
+		} else if n, _ = fmt.Sscanf(arg, "--cpu_profile=%d%c", &value, &junk); n == 1 {
+			flagsCPUProfile = value == 1
 		} else {
 			fmt.Fprintf(os.Stderr, "Invalid flag '%s'\n", arg)
 			os.Exit(1)
