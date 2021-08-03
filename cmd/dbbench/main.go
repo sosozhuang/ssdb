@@ -69,7 +69,7 @@ func newRandomGenerator() *randomGenerator {
 	buf := bytes.NewBuffer(make([]byte, 0, 100))
 	for len(g.data) < 1048576 {
 		util.CompressibleBytes(rnd, flagsCompressionRatio, 100, buf)
-		g.data = append(g.data, buf.Bytes()[:100]...)
+		g.data = append(g.data, buf.Bytes()...)
 	}
 	return g
 }
@@ -310,7 +310,7 @@ func (b *benchmark) printHeader() {
 func printEnvironment() {
 	fmt.Fprintf(os.Stderr, "SSDB:       version %d.%d\n", ssdb.MajorVersion, ssdb.MinorVersion)
 	now := time.Now()
-	fmt.Fprintf(os.Stderr, "Date:       %s\n", now.String())
+	fmt.Fprintf(os.Stderr, "Date:       %s\n", now.Format("2006-01-02T15:04:05"))
 	printCPUInfo()
 }
 
@@ -532,6 +532,7 @@ func (b *benchmark) open() {
 	}
 	options := ssdb.NewOptions()
 	options.Env = env
+	options.CompressionType = ssdb.NoCompression
 	options.CreateIfMissing = !flagsUseExistingDB
 	options.BlockCache = b.cache
 	options.WriteBufferSize = flagsWriteBufferSize

@@ -51,7 +51,9 @@ func CompressibleBytes(rnd *Random, compressedFraction float64, l int, buf *byte
 		raw = 1
 	}
 	rawData := RandomBytes(rnd, raw)
+	buf.Truncate(0)
 	for buf.Len() < l {
 		buf.Write(rawData)
 	}
+	buf.Truncate(l)
 }
