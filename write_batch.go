@@ -44,8 +44,15 @@ func (b *writeBatch) Delete(key []byte) {
 	util.PutLengthPrefixedSlice(&b.rep, key)
 }
 
+var emptyWriteBatch [writeBatchHeader]byte
+
 func (b *writeBatch) Clear() {
-	b.rep = make([]byte, writeBatchHeader)
+	if len(b.rep) < writeBatchHeader {
+		b.rep = make([]byte, writeBatchHeader)
+	} else {
+		b.rep = b.rep[:writeBatchHeader]
+		copy(b.rep, emptyWriteBatch[:])
+	}
 }
 
 func (b *writeBatch) ApproximateSize() int {
@@ -67,9 +74,11 @@ func (b *writeBatch) Iterate(handler WriteBatchHandler) error {
 		return util.CorruptionError1("malformed WriteBatch (too small)")
 	}
 	input = input[writeBatchHeader:]
-	var key, value []byte
-	var found = 0
-	var tag ValueType
+	var (
+		key, value []byte
+		found      uint32
+		tag        ValueType
+	)
 	for len(input) > 0 {
 		found++
 		tag = ValueType(input[0])
@@ -97,13 +106,13 @@ func (b *writeBatch) Iterate(handler WriteBatchHandler) error {
 	return nil
 }
 
-func (b *writeBatch) Count() int {
-	return int(util.DecodeFixed32(b.rep[8:]))
+func (b *writeBatch) Count() uint32 {
+	return util.DecodeFixed32(b.rep[8:])
 }
 
-func (b *writeBatch) SetCount(n int) {
+func (b *writeBatch) SetCount(n uint32) {
 	dst := (*[4]byte)(unsafe.Pointer(&b.rep[8]))
-	util.EncodeFixed32(dst, uint32(n))
+	util.EncodeFixed32(dst, n)
 }
 
 func (b *writeBatch) Sequence() uint64 {
@@ -114,13 +123,6 @@ func (b *writeBatch) SetSequence(seq uint64) {
 	dst := (*[8]byte)(unsafe.Pointer(&b.rep[0]))
 	util.EncodeFixed64(dst, seq)
 }
-
-//func (b *writeBatch) InsertInto(mem *memTable) error {
-//	return b.Iterate(&memTableInserter{
-//		seq: b.sequence(),
-//		mem: mem,
-//	})
-//}
 
 func (b *writeBatch) Contents() []byte {
 	return b.rep
