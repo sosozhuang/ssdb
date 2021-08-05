@@ -67,39 +67,39 @@ func newBlock(contents *blockContents) *block {
 	return b
 }
 
-func decodeEntry(data []byte) (shared uint32, nonShared uint32, valueLength uint32, i int32) {
+func decodeEntry(data []byte, shared *uint32, nonShared *uint32, valueLength *uint32) (i int32) {
 	n := len(data)
 	if n < 3 {
 		i = -1
 		return
 	}
-	shared = uint32(data[0])
-	nonShared = uint32(data[1])
-	valueLength = uint32(data[2])
-	if shared|nonShared|valueLength < 128 {
+	*shared = uint32(data[0])
+	*nonShared = uint32(data[1])
+	*valueLength = uint32(data[2])
+	if *shared|*nonShared|*valueLength < 128 {
 		i = 3
 	} else {
 		var p int
-		if p = util.GetVarInt32Ptr(data, &shared); p == -1 {
+		if p = util.GetVarInt32Ptr(data, shared); p == -1 {
 			i = -1
 			return
 		}
 		i += int32(p)
 		data = data[p:]
-		if p = util.GetVarInt32Ptr(data, &nonShared); p == -1 {
+		if p = util.GetVarInt32Ptr(data, nonShared); p == -1 {
 			i = -1
 			return
 		}
 		i += int32(p)
 		data = data[p:]
-		if p = util.GetVarInt32Ptr(data, &valueLength); p == -1 {
+		if p = util.GetVarInt32Ptr(data, valueLength); p == -1 {
 			i = -1
 			return
 		}
 		i += int32(p)
 	}
 
-	if n-int(i) < int(nonShared+valueLength) {
+	if n-int(i) < int(*nonShared+*valueLength) {
 		i = -1
 		return
 	}
@@ -178,12 +178,13 @@ func (i *blockIterator) Seek(target []byte) {
 		regionOffset uint32
 		shared       uint32
 		nonShared    uint32
+		valueLength  uint32
 		index        int32
 	)
 	for left < right {
 		mid = (left + right + 1) / 2
 		regionOffset = i.getRestartPoint(mid)
-		shared, nonShared, _, index = decodeEntry(i.data[regionOffset:i.restarts])
+		index = decodeEntry(i.data[regionOffset:i.restarts], &shared, &nonShared, &valueLength)
 		if index == -1 || shared != 0 {
 			i.corruptionError()
 			return
@@ -270,7 +271,7 @@ func (i *blockIterator) parseNextKey() bool {
 		shared, nonShared, valueLength uint32
 		index                          int32
 	)
-	shared, nonShared, valueLength, index = decodeEntry(i.data[i.current:i.restarts])
+	index = decodeEntry(i.data[i.current:i.restarts], &shared, &nonShared, &valueLength)
 	if index == -1 || len(i.key) < int(shared) {
 		i.corruptionError()
 		return false

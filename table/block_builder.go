@@ -16,12 +16,12 @@ type blockBuilder struct {
 }
 
 func (b *blockBuilder) reset() {
-	b.buffer = make([]byte, 0)
-	b.restarts = make([]uint32, 1)
+	b.buffer = b.buffer[:0]
+	b.restarts = b.restarts[:1]
 	b.restarts[0] = 0
 	b.counter = 0
 	b.finished = false
-	b.lastKey = make([]byte, 0)
+	b.lastKey = b.lastKey[:0]
 }
 
 func (b *blockBuilder) currentSizeEstimate() int {

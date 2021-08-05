@@ -57,12 +57,11 @@ func (b *builder) Add(key, value []byte) {
 		r.filterBlock.addKey(key)
 	}
 
-	if l1, l2 := len(r.lastKey), len(key); l1 < l2 {
+	if l1, l2 := cap(r.lastKey), len(key); l1 < l2 {
 		r.lastKey = make([]byte, l2)
 	} else if l1 > l2 {
 		r.lastKey = r.lastKey[:l2]
 	}
-	//r.lastKey = make([]byte, len(key))
 	copy(r.lastKey, key)
 	r.numEntries++
 	r.dataBlock.add(key, value)
