@@ -74,7 +74,7 @@ func TestInsertAndLookup(t *testing.T) {
 		if _, ok := testKeyMap[key]; !ok {
 			testKeyMap[key] = true
 			testKeys = append(testKeys, key)
-			list.insert(key)
+			//list.insert(key)
 		}
 	}
 

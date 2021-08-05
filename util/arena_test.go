@@ -1,6 +1,8 @@
 package util
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
 	"unsafe"
 )
@@ -8,6 +10,15 @@ import (
 type pair struct {
 	s uint
 	r unsafe.Pointer
+}
+
+func TestAddress(t *testing.T) {
+	b := make([]byte, 100)
+	fmt.Println(uintptr(unsafe.Pointer(&b)))
+	hdr := *(*reflect.SliceHeader)(unsafe.Pointer(&b))
+	fmt.Println(hdr.Data)
+	fmt.Println(uintptr(unsafe.Pointer(&b[0])))
+	fmt.Println(uintptr(unsafe.Pointer(&b[80])))
 }
 
 func TestSimple(t *testing.T) {

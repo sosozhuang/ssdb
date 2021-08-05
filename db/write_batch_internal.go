@@ -3,8 +3,8 @@ package db
 import "ssdb"
 
 type writeBatchInternal interface {
-	Count() int
-	SetCount(n int)
+	Count() uint32
+	SetCount(n uint32)
 	Sequence() uint64
 	SetSequence(seq uint64)
 	Contents() []byte

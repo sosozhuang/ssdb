@@ -17,7 +17,7 @@ func printContents(b ssdb.WriteBatch, t *testing.T) string {
 	err := insertInto(b, mem)
 	//err := b.insertInto(mem)
 
-	count := 0
+	count := uint32(0)
 	iter := mem.newIterator()
 	var ikey parsedInternalKey
 	for iter.SeekToFirst(); iter.Valid(); iter.Next() {

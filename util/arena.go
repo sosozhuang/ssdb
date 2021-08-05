@@ -1,14 +1,12 @@
 package util
 
 import (
-	"reflect"
 	"sync/atomic"
 	"unsafe"
 )
 
 const (
-	arenaBlockSize  = 4096
-	sliceHeaderSize = uint(unsafe.Sizeof(reflect.SliceHeader{}))
+	arenaBlockSize = 4096
 )
 
 var align uint
@@ -80,11 +78,13 @@ func (a *Arena) allocateFallback(bytes uint) unsafe.Pointer {
 	a.allocBytesRemaining -= bytes
 	return result
 }
-func (a *Arena) allocateNewBlock(blockBytes uint) unsafe.Pointer {
-	result := make([]byte, blockBytes)
-	a.blocks = append(a.blocks, result)
-	atomic.AddUint64(&a.memoryUsage, uint64(blockBytes+sliceHeaderSize))
-	return unsafe.Pointer(&result[0])
+
+func (a *Arena) allocateNewBlock(blockBytes uint) (result unsafe.Pointer) {
+	buf := make([]byte, blockBytes)
+	result = unsafe.Pointer(&buf[0])
+	a.blocks = append(a.blocks, buf)
+	atomic.AddUint64(&a.memoryUsage, uint64(blockBytes))
+	return
 }
 
 func (a *Arena) MemoryUsage() uint64 {
@@ -95,7 +95,7 @@ func NewArena() *Arena {
 	return &Arena{
 		allocPtr:            nil,
 		allocBytesRemaining: 0,
-		blocks:              make([][]byte, 0),
+		blocks:              make([][]byte, 0, 512),
 		memoryUsage:         0,
 	}
 }

@@ -197,7 +197,7 @@ func (r *logReader) readPhysicalRecord() (result []byte, rt recordType) {
 			expected := util.UnmaskChecksum(util.DecodeFixed32(r.buffer))
 			actual := util.ChecksumValue(r.buffer[6 : 6+1+length])
 			if expected != actual {
-				r.buffer = make([]byte, 0)
+				r.buffer = nil
 				r.reportCorruption(n, "checksum mismatch")
 				rt = badRecord
 				return

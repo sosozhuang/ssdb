@@ -9,11 +9,10 @@ import (
 )
 
 type memTable struct {
-	comparator  *keyComparator
-	refs        int
-	table       *skipList
-	arena       *util.Arena
-	memoryUsage uint64
+	comparator *keyComparator
+	refs       int
+	table      *skipList
+	arena      *util.Arena
 }
 
 func (t *memTable) ref() {
@@ -45,7 +44,7 @@ func (t *memTable) newIterator() ssdb.Iterator {
 }
 
 const (
-	sliceHeaderSize = uint(unsafe.Sizeof(reflect.SliceHeader{}))
+	sliceHeaderSize = unsafe.Sizeof(reflect.SliceHeader{})
 )
 
 func (t *memTable) add(seq sequenceNumber, vt ssdb.ValueType, key, value []byte) {
@@ -58,38 +57,23 @@ func (t *memTable) add(seq sequenceNumber, vt ssdb.ValueType, key, value []byte)
 	valSize := len(value)
 	internalKeySize := uint32(keySize + 8)
 	encodedLen := util.VarIntLength(uint64(internalKeySize)) + int(internalKeySize) + util.VarIntLength(uint64(valSize)) + valSize
-	pointer := t.arena.Allocate(uint(encodedLen) + sliceHeaderSize)
+	pointer := t.arena.Allocate(uint(encodedLen) + uint(sliceHeaderSize))
 	sh := (*reflect.SliceHeader)(pointer)
-	sh.Data = uintptr(pointer) + uintptr(sliceHeaderSize)
+	sh.Data = uintptr(pointer) + sliceHeaderSize
 	sh.Len = encodedLen
 	sh.Cap = encodedLen
-	buf := *(*[]byte)(pointer)
-	i := util.EncodeVarInt32((*[5]byte)(unsafe.Pointer(&buf[0])), internalKeySize)
-	copy(buf[i:], key)
+	buf := (*[]byte)(pointer)
+	i := util.EncodeVarInt32((*[5]byte)(unsafe.Pointer(&(*buf)[0])), internalKeySize)
+	copy((*buf)[i:], key)
 	i += keySize
-	util.EncodeFixed64((*[8]byte)(unsafe.Pointer(&buf[i])), uint64(seq<<8)|uint64(vt))
+	util.EncodeFixed64((*[8]byte)(unsafe.Pointer(&(*buf)[i])), uint64(seq<<8)|uint64(vt))
 	i += 8
-	i += util.EncodeVarInt32((*[5]byte)(unsafe.Pointer(&buf[i])), uint32(valSize))
-	copy(buf[i:], value)
+	i += util.EncodeVarInt32((*[5]byte)(unsafe.Pointer(&(*buf)[i])), uint32(valSize))
+	copy((*buf)[i:], value)
 	if i+valSize != encodedLen {
 		panic("memtable: i + valSize != encodedLen")
 	}
-	t.table.insert(buf)
-}
-
-func copyMemoryToPointer(pointer unsafe.Pointer, src []byte) {
-	const n = 64
-	size := len(src)
-	var dst *[n]byte
-	for start, limit := 0, n; size > 0; start += n {
-		if size < n {
-			limit = size
-		}
-		dst = (*[n]byte)(pointer)
-		copy((*dst)[:], src[start:start+limit])
-		pointer = unsafe.Pointer(uintptr(pointer) + n)
-		size -= n
-	}
+	t.table.insert(*buf)
 }
 
 func (t *memTable) get(key *lookupKey, value *[]byte) (error, bool) {
@@ -136,7 +120,7 @@ func newMemTable(comparator *internalKeyComparator) *memTable {
 		refs:       0,
 		arena:      util.NewArena(),
 	}
-	t.table = newSkipList(t.comparator.compare, t.arena)
+	t.table = newSkipList(t.comparator.compare)
 	return t
 }
 
@@ -144,31 +128,32 @@ type keyComparator struct {
 	comparator *internalKeyComparator
 }
 
-func copyMemoryToSlice(dst *[]byte, pointer unsafe.Pointer, l int) {
-	const n = 64
-	var src *[n]byte
-	for start, limit := 0, n; l > 0; start += n {
-		if limit > l {
-			limit = l
-		}
-		src = (*[n]byte)(pointer)
-		copy((*dst)[start:start+limit], src[:limit])
-		pointer = unsafe.Pointer(uintptr(pointer) + n)
-		l -= n
-	}
-}
-
 func getLengthPrefixedSlice(data []byte) []byte {
 	var (
 		l uint32
 		p int
 	)
-	if len(data) >= 5 {
-		p = util.GetVarInt32Ptr(data[:5], &l)
-	} else {
-		p = util.GetVarInt32Ptr(data, &l)
-	}
+	getPrefixedLength(data, &p, &l)
 	return data[p : p+int(l)]
+}
+
+func getLengthPrefixedValue(data []byte) []byte {
+	var (
+		l uint32
+		p int
+	)
+	getPrefixedLength(data, &p, &l)
+	data = data[p+int(l):]
+	getPrefixedLength(data, &p, &l)
+	return data[p : p+int(l)]
+}
+
+func getPrefixedLength(data []byte, p *int, l *uint32) {
+	if len(data) >= 5 {
+		*p = util.GetVarInt32Ptr(data[:5], l)
+	} else {
+		*p = util.GetVarInt32Ptr(data, l)
+	}
 }
 
 func (c *keyComparator) compare(a, b skipListKey) int {
@@ -221,8 +206,7 @@ func (i *memTableIterator) Key() []byte {
 
 func (i *memTableIterator) Value() []byte {
 	key := i.iter.key().([]byte)
-	keySlice := getLengthPrefixedSlice(key)
-	return getLengthPrefixedSlice(keySlice)
+	return getLengthPrefixedValue(key)
 }
 
 func (i *memTableIterator) Status() error {

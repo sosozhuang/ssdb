@@ -20,7 +20,7 @@ type skipList struct {
 }
 
 func (l *skipList) insert(key skipListKey) {
-	prev := make([]*node, maxHeight, maxHeight)
+	prev := make([]*node, maxHeight)
 	x := l.findGreaterOrEqual(key, prev)
 
 	if !(x == nil || !l.equal(key, x.key)) {
@@ -51,8 +51,8 @@ func (l *skipList) getMaxHeight() int {
 }
 
 const (
-	nodeSize    = unsafe.Sizeof(node{})
-	pointerSize = unsafe.Sizeof(&node{})
+	nodeSize        = unsafe.Sizeof(node{})
+	nodePointerSize = unsafe.Sizeof(&node{})
 )
 
 func (l *skipList) newNode(key skipListKey, height int) *node {
@@ -143,8 +143,7 @@ func (l *skipList) findLast() *node {
 }
 
 type node struct {
-	key skipListKey
-	//pointer unsafe.Pointer
+	key   skipListKey
 	nexts []*node
 }
 
@@ -152,16 +151,14 @@ func (n *node) next(i int) *node {
 	if i < 0 {
 		panic("node: i < 0")
 	}
-	p := unsafe.Pointer(&n.nexts[i])
-	return *(**node)(atomic.LoadPointer(&p))
+	p := unsafe.Pointer(n.nexts[i])
+	return (*node)(atomic.LoadPointer(&p))
 }
 
 func (n *node) setNext(i int, x *node) {
 	if i < 0 {
 		panic("node: i < 0")
 	}
-	//p := unsafe.Pointer(uintptr(n.pointer) + uintptr(i)*pointerSize)
-	//atomic.StorePointer((*unsafe.Pointer)(p), unsafe.Pointer(x))
 	p := unsafe.Pointer(&n.nexts[i])
 	atomic.StorePointer((*unsafe.Pointer)(p), unsafe.Pointer(x))
 }
@@ -170,8 +167,6 @@ func (n *node) noBarrierNext(i int) *node {
 	if i < 0 {
 		panic("node: i < 0")
 	}
-	//p := unsafe.Pointer(uintptr(n.pointer) + uintptr(i)*pointerSize)
-	//return *(**node)(p)
 	return n.nexts[i]
 }
 
@@ -179,8 +174,6 @@ func (n *node) noBarrierSetNext(i int, x *node) {
 	if i < 0 {
 		panic("node: i < 0")
 	}
-	//p := unsafe.Pointer(uintptr(n.pointer) + uintptr(i)*pointerSize)
-	//*(**node)(p) = x
 	n.nexts[i] = x
 }
 

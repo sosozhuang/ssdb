@@ -170,7 +170,7 @@ func (r *repairer) convertLogToTable(log uint64) error {
 	batch := ssdb.NewWriteBatch()
 	mem := newMemTable(&r.icmp)
 	mem.ref()
-	counter := 0
+	counter := uint32(0)
 	ok := true
 	for record, ok = reader.readRecord(); ok; record, ok = reader.readRecord() {
 		if len(record) < 12 {
