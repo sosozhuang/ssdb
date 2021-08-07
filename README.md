@@ -42,10 +42,10 @@ func main() {
 	}
 }
 ```
-More examples can be found [here](https://github.com/sosozhuang/ssdb/examples.md).
+More examples can be found [here](https://github.com/sosozhuang/ssdb/blob/master/examples.md).
 
 ## Performance
-A benchmark program [dbbench](https://github.com/sosozhuang/ssdb/cmd/dbbench) is written in order to test performance.
+A benchmark program [dbbench](https://github.com/sosozhuang/ssdb/tree/master/cmd/dbbench) is written in order to test performance.
 
 ### Setup
     SSDB:       version 1.22
