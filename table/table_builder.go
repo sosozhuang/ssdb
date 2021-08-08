@@ -59,7 +59,7 @@ func (b *builder) Add(key, value []byte) {
 
 	if l1, l2 := cap(r.lastKey), len(key); l1 < l2 {
 		r.lastKey = make([]byte, l2)
-	} else if l1 > l2 {
+	} else {
 		r.lastKey = r.lastKey[:l2]
 	}
 	copy(r.lastKey, key)

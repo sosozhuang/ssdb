@@ -57,19 +57,15 @@ func TestReadWrite(t *testing.T) {
 		if d = len(data) - readResult.Len(); l > d {
 			l = d
 		}
-		if l > 1 {
-			scratch = make([]byte, l)
-		} else {
-			scratch = make([]byte, 1)
-		}
+		scratch = make([]byte, l)
 		read, _, err = sequentialFile.Read(scratch)
 		if l > 0 {
-			util.AssertTrue(len(read) > 0, "", t)
+			util.AssertGreaterThan(len(read), 0, "read length", t)
 		}
-		util.AssertTrue(len(read) <= l, "", t)
+		util.AssertLessThanOrEqual(len(read), l, "read length", t)
 		readResult.Write(read)
 	}
-	util.AssertEqual(readResult.String(), data, "", t)
+	util.AssertEqual(readResult.String(), data, "result", t)
 }
 
 func TestRunImmediately(t *testing.T) {

@@ -53,7 +53,7 @@ func TestEmptyWriteBatch(t *testing.T) {
 	batch := ssdb.NewWriteBatch()
 	bi := batch.(writeBatchInternal)
 	util.AssertEqual("", printContents(batch, t), "empty content", t)
-	util.AssertEqual(0, bi.Count(), "zero count", t)
+	util.AssertEqual(uint32(0), bi.Count(), "zero count", t)
 }
 
 func TestMulti(t *testing.T) {
@@ -64,7 +64,7 @@ func TestMulti(t *testing.T) {
 	bi := batch.(writeBatchInternal)
 	bi.SetSequence(100)
 	util.AssertEqual(uint64(100), bi.Sequence(), "Sequence", t)
-	util.AssertEqual(3, bi.Count(), "Count", t)
+	util.AssertEqual(uint32(3), bi.Count(), "Count", t)
 	util.AssertEqual("Put(baz, boo)@102"+
 		"Delete(box)@101"+
 		"Put(foo, bar)@100", printContents(batch, t), "contents", t)
