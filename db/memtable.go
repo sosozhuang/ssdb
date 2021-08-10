@@ -9,10 +9,10 @@ import (
 )
 
 type memTable struct {
-	comparator *keyComparator
-	refs       int
-	table      *skipList
-	arena      *util.Arena
+	comparator  *keyComparator
+	refs        int
+	table       *skipList
+	memoryUsage uint64
 }
 
 func (t *memTable) ref() {
@@ -36,7 +36,7 @@ func (t *memTable) release() {
 }
 
 func (t *memTable) approximateMemoryUsage() uint64 {
-	return t.arena.MemoryUsage()
+	return t.memoryUsage
 }
 
 func (t *memTable) newIterator() ssdb.Iterator {
@@ -57,23 +57,19 @@ func (t *memTable) add(seq sequenceNumber, vt ssdb.ValueType, key, value []byte)
 	valSize := len(value)
 	internalKeySize := uint32(keySize + 8)
 	encodedLen := util.VarIntLength(uint64(internalKeySize)) + int(internalKeySize) + util.VarIntLength(uint64(valSize)) + valSize
-	pointer := t.arena.Allocate(uint(encodedLen) + uint(sliceHeaderSize))
-	sh := (*reflect.SliceHeader)(pointer)
-	sh.Data = uintptr(pointer) + sliceHeaderSize
-	sh.Len = encodedLen
-	sh.Cap = encodedLen
-	buf := (*[]byte)(pointer)
-	i := util.EncodeVarInt32((*[5]byte)(unsafe.Pointer(&(*buf)[0])), internalKeySize)
-	copy((*buf)[i:], key)
+	buf := make([]byte, encodedLen)
+	t.memoryUsage += uint64(encodedLen)
+	i := util.EncodeVarInt32((*[5]byte)(unsafe.Pointer(&buf[0])), internalKeySize)
+	copy(buf[i:], key)
 	i += keySize
-	util.EncodeFixed64((*[8]byte)(unsafe.Pointer(&(*buf)[i])), uint64(seq<<8)|uint64(vt))
+	util.EncodeFixed64((*[8]byte)(unsafe.Pointer(&buf[i])), uint64(seq<<8)|uint64(vt))
 	i += 8
-	i += util.EncodeVarInt32((*[5]byte)(unsafe.Pointer(&(*buf)[i])), uint32(valSize))
-	copy((*buf)[i:], value)
+	i += util.EncodeVarInt32((*[5]byte)(unsafe.Pointer(&buf[i])), uint32(valSize))
+	copy(buf[i:], value)
 	if i+valSize != encodedLen {
 		panic("memtable: i + valSize != encodedLen")
 	}
-	t.table.insert(*buf)
+	t.table.insert(buf)
 }
 
 func (t *memTable) get(key *lookupKey, value *[]byte) (error, bool) {
@@ -118,7 +114,6 @@ func newMemTable(comparator *internalKeyComparator) *memTable {
 	t := &memTable{
 		comparator: &keyComparator{comparator},
 		refs:       0,
-		arena:      util.NewArena(),
 	}
 	t.table = newSkipList(t.comparator.compare)
 	return t
